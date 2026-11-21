@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Calendar, 
   Clock, 
@@ -35,6 +35,44 @@ export default function DailyRoutine({
   const [simulatedPurifier, setSimulatedPurifier] = useState(userProfile.hasAirPurifier ?? true);
   const [simulatedWakeUp, setSimulatedWakeUp] = useState(userProfile.wakeUpTime || '06:30');
   const [simulatedSleep, setSimulatedSleep] = useState(userProfile.sleepTime || '22:30');
+
+  // Synchronize local simulation state whenever saved userProfile prop changes
+  useEffect(() => {
+    if (userProfile.lifestyle) {
+      setSimulatedLifestyle(userProfile.lifestyle);
+    }
+  }, [userProfile.lifestyle]);
+
+  useEffect(() => {
+    if (userProfile.hasAirPurifier !== undefined) {
+      setSimulatedPurifier(userProfile.hasAirPurifier);
+    }
+  }, [userProfile.hasAirPurifier]);
+
+  useEffect(() => {
+    if (userProfile.wakeUpTime) {
+      setSimulatedWakeUp(userProfile.wakeUpTime);
+    }
+  }, [userProfile.wakeUpTime]);
+
+  useEffect(() => {
+    if (userProfile.sleepTime) {
+      setSimulatedSleep(userProfile.sleepTime);
+    }
+  }, [userProfile.sleepTime]);
+
+  const isSimulationDirty = 
+    simulatedLifestyle !== userProfile.lifestyle ||
+    simulatedPurifier !== userProfile.hasAirPurifier ||
+    simulatedWakeUp !== userProfile.wakeUpTime ||
+    simulatedSleep !== userProfile.sleepTime;
+
+  const handleResetToProfileDefaults = () => {
+    setSimulatedLifestyle(userProfile.lifestyle || 'working_professional');
+    setSimulatedPurifier(userProfile.hasAirPurifier ?? true);
+    setSimulatedWakeUp(userProfile.wakeUpTime || '06:30');
+    setSimulatedSleep(userProfile.sleepTime || '22:30');
+  };
 
   // Active routine based on effective city AQI and lifestyle inputs
   const dynamicProfile = {
@@ -195,11 +233,33 @@ export default function DailyRoutine({
               fontWeight: 700,
               border: '1px solid #A7F3D0'
             }}>
-              4 AQI Scenarios
+              CPCB Tiers & Scenarios
             </span>
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            {isSimulationDirty && (
+              <button
+                onClick={handleResetToProfileDefaults}
+                title="Reset lifestyle, purifier, and wake-up toggles back to saved profile settings"
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  fontSize: '0.775rem',
+                  color: '#065F46',
+                  fontWeight: 600,
+                  backgroundColor: '#ECFDF5',
+                  padding: '5px 10px',
+                  borderRadius: '8px',
+                  border: '1px solid #A7F3D0',
+                  cursor: 'pointer'
+                }}
+              >
+                <RefreshCw size={13} />
+                <span>Reset to Profile Defaults</span>
+              </button>
+            )}
             {activeScenarioId !== 'current' && (
               <button
                 onClick={() => onSelectScenario('current')}
@@ -660,8 +720,8 @@ export default function DailyRoutine({
       }}>
         <Sparkles size={20} color="#20464A" style={{ flexShrink: 0, marginTop: '2px' }} />
         <div>
-          <strong style={{ color: '#102E35' }}>Stage 2 Integration Architecture:</strong>
-          {' '}This daily routine engine currently implements deterministic heuristic mapping for our sample scenarios. Its clean schema (`time`, `category`, `recommendation`, `reasoning`, `practicalAlternative`, `expectedBenefit`) has been purpose-built to accept live parameter injection from both external AQI sensors and the Gemini 1.5/2.0 API in subsequent stages.
+          <strong style={{ color: '#102E35' }}>Decision Engine Architecture:</strong>
+          {' '}This daily routine engine implements explainable, rule-based decision trees mapped to official CPCB breakpoints and user schedules. Its modular schema (`time`, `category`, `recommendation`, `reasoning`, `practicalAlternative`, `expectedBenefit`) delivers deterministic, medically sound guidance with full auditability.
         </div>
       </div>
 

@@ -36,7 +36,7 @@ export default function DataNoticeBanner({ onOpenAi }) {
           Prototype Demo Mode
         </span>
         <span style={{ color: '#E2ECE9' }}>
-          Air quality and routine recommendations are currently using <strong>clearly labelled sample scenario data</strong>. Real-time sensor API and Gemini AI integration are scheduled for Stage 2.
+          Air quality and routine recommendations are powered by our <strong>deterministic CPCB decision engine</strong> using clearly labeled demonstration scenarios.
         </span>
       </div>
 

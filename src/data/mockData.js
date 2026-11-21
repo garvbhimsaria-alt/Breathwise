@@ -237,7 +237,7 @@ export const INITIAL_USER_PROFILE = {
   outdoorTime: 'early_morning', // 'early_morning', 'morning', 'afternoon', 'evening'
   hasAirPurifier: true, // true, false, 'unsure'
   hasAc: true,
-  healthSensitivity: 'mild_asthma', // 'none', 'mild_asthma', 'sensitive_throat', 'senior_household', 'child_at_home'
+  healthSensitivity: 'none', // 'none', 'mild_asthma', 'sensitive_throat', 'senior_household', 'child_at_home'
   wakeUpTime: '06:30',
   sleepTime: '22:30',
   hasCompletedOnboarding: true
@@ -255,14 +255,10 @@ export const AI_SUGGESTED_QUESTIONS = [
 export const AI_KNOWLEDGE_BASE = {
   // Conversational Intent: Greetings
   greeting: {
-    title: 'Welcome to BreatheWise',
-    response: (name, city, aqi, aqiCategory) => `Hello ${name || 'there'}! Great to meet you.
+    title: 'Hello from BreatheWise',
+    response: (name) => `Hey ${name || 'there'}! Welcome to BreatheWise.
 
-I am **BreatheWise**, your personal AI-powered air-quality and daily routine companion. I help you navigate urban smog by adapting your schedules, recommending safe exercise windows, optimizing indoor ventilation, and cutting personal emissions.
-
-Currently for **${city?.name || 'your area'}**, the air quality is ${aqi ? `**${aqiCategory || 'monitored'}** (AQI ${aqi})` : '**currently unavailable (data offline)**'}.
-
-How can I help you today? You can choose one of the suggested prompts above or ask about workouts, masks, or ventilation!`
+How can I help you today? You can ask me about current air quality, pollution health impacts, your daily routine, or practical ways to reduce exposure.`
   },
 
   // Conversational Intent: Gratitude
@@ -280,21 +276,128 @@ Breathe easy and stay safe!`
     title: 'Take Care & Breathe Safe',
     response: (name) => `Goodbye for now, ${name || 'friend'}! 
 
-Before heading out, be sure to check the **Daily Routine** tab for hour-by-hour atmospheric updates. Stay safe and have a healthy day!`
+Before heading out, be sure to check the **Daily Routine** tab for your personalized timeline updates. Stay safe and have a healthy day!`
   },
 
   // Conversational Intent: Capabilities / Identity
   identity: {
-    title: 'What BreatheWise AI Can Do For You',
-    response: () => `Here is how BreatheWise assists you during urban air pollution events:
+    title: 'About BreatheWise & Capabilities',
+    response: () => `I am **BreatheWise**, your personal air-quality and daily routine companion. My purpose is to help individuals and families navigate urban air pollution through science-backed, actionable guidance.
 
-1. **Personalized Daily Routines:** Restructures your workouts, commute times, and indoor ventilation around diurnal smog cycles.
-2. **Exercise Guidance:** Evaluates current particulate levels (PM2.5/PM10) to determine whether outdoor cardio is safe or if indoor alternatives are needed.
-3. **Indoor Air Optimization:** Actionable advice on ventilation windows, cooking exhaust protocols, wet mopping, and True HEPA filtration.
-4. **Commuter Defense:** Specific protection strategies for cars (AC recirculation), metro transit, two-wheelers, and certified N95 mask usage.
-5. **Sustainable Impact:** Tracks and estimates your personal avoided carbon and particulate emissions.
+Here is what I can do:
+1. **Personalized Daily Routines:** Restructures workouts, commute strategies, and ventilation around diurnal smog cycles.
+2. **Exercise Guidance:** Evaluates particulate levels to determine whether outdoor cardio is safe or if indoor alternatives are advised.
+3. **Indoor Air Optimization:** Room-by-room guidance on kitchen exhaust, damp-mopping, ventilation windows, and air purifiers.
+4. **Commuter Protection:** Specific precautions for cars (AC recirculation), metro transit, two-wheelers, and certified N95 respirators.
+5. **Sustainable Impact:** Tracks and estimates your personal avoided carbon (CO2) and particulate (PM) emissions.
 
-*(Note: Currently running in prototype demo mode. Full conversational reasoning with live sensor streaming will be powered by Google Gemini in Stage 3!)*`
+Ask me a question or tap any of the suggested prompts above!`
+  },
+
+  // General Knowledge: What is AQI?
+  what_is_aqi: {
+    title: 'Understanding the Air Quality Index (AQI)',
+    response: () => `The **Air Quality Index (AQI)** is a standardized number used by government environmental agencies to communicate how clean or polluted ambient air is.
+
+In India, the Central Pollution Control Board (CPCB) classifies AQI into 6 categories:
+- **0–50 (Good):** Minimal health impact; pristine air.
+- **51–100 (Satisfactory):** Minor breathing discomfort may develop in unusually sensitive individuals.
+- **101–200 (Moderate):** Discomfort for people with lung/heart disease, children, and older adults.
+- **201–300 (Poor):** Breathing discomfort to most people on prolonged exposure.
+- **301–400 (Very Poor):** Risk of respiratory illness on prolonged exposure.
+- **401–500+ (Severe):** Affects healthy individuals and seriously impacts those with existing conditions.
+
+AQI transforms complex pollutant measurements (PM2.5, PM10, NO2, SO2, CO, O3) into a single, actionable public health metric.`
+  },
+
+  // General Knowledge: What is PM2.5?
+  what_is_pm25: {
+    title: 'What is PM2.5 and Why is it Dangerous?',
+    response: () => `**PM2.5** refers to fine atmospheric particulate matter with an aerodynamic diameter smaller than **2.5 micrometers**—roughly 30 times thinner than a single strand of human hair.
+
+**Why PM2.5 is Dangerous:**
+1. **Bypasses Natural Defenses:** Unlike larger dust particles, PM2.5 easily bypasses nasal hairs and mucus membranes.
+2. **Deep Alveolar Penetration:** It travels deep into pulmonary alveoli where oxygen exchanges into blood.
+3. **Enters the Bloodstream:** Micro-particulates can cross the alveolar-capillary barrier directly into blood circulation, contributing to systemic vascular inflammation, arterial plaque instability, and cardiovascular stress.
+
+Common sources include vehicle exhaust (especially diesel), biomass burning, crop residue smoke, industrial emissions, and coal combustion.`
+  },
+
+  // General Knowledge: What is PM10?
+  what_is_pm10: {
+    title: 'What is PM10 (Coarse Particulate Matter)?',
+    response: () => `**PM10** refers to inhalable particles with diameters between **2.5 and 10 micrometers**.
+
+Common sources include:
+- Road dust and construction debris.
+- Windblown soil and agricultural tilling.
+- Pollen and mold spores.
+- Brake and tire friction wear from vehicles.
+
+While less prone to entering the bloodstream than PM2.5, PM10 irritates the upper respiratory tract, eyes, and throat, triggering coughing, wheezing, and allergic rhinitis.`
+  },
+
+  // General Knowledge: What is Smog?
+  what_is_smog: {
+    title: 'What is Smog and How Does it Form?',
+    response: () => `**Smog** is a blend of "smoke" and "fog". In urban winter settings, it forms through a combination of emissions and meteorological conditions:
+
+1. **Emission Sources:** Heavy vehicle exhaust, industrial fumes, power plant emissions, construction dust, and open burning release particulate matter and gases.
+2. **Thermal Inversion:** During cold, still winter nights, the ground cools rapidly. A layer of cold, heavy air gets trapped beneath a layer of warm air.
+3. **The "Lid" Effect:** The warm air layer acts like a ceiling. Emissions cannot rise into the upper atmosphere and stay concentrated within 50 to 100 meters of the ground where we breathe.
+4. **Photochemical Reactions:** Sunlight interacts with nitrogen oxides (NOx) and volatile organic compounds (VOCs) to create secondary fine aerosols and ground-level ozone.`
+  },
+
+  // Health: Lungs and Respiratory System
+  lungs_health: {
+    title: 'How Air Pollution Affects the Lungs',
+    response: () => `Breathing polluted air directly challenges pulmonary tissue:
+
+1. **Airway Inflammation:** Acidic aerosols and oxidants irritate the bronchial lining, causing swelling, mucus overproduction, and airway narrowing.
+2. **Reduced Lung Capacity:** Chronic exposure gradually reduces forced expiratory volume, particularly in developing children and seniors.
+3. **Asthma & Bronchitis Flare-ups:** Micro-particles trigger rapid bronchospasms, increasing the frequency of asthma attacks.
+4. **Impaired Cilia Function:** Particulates overwhelm the microscopic cilia that sweep foreign matter out of your lungs.
+
+**Key Precaution:** Wear a certified N95 respirator during high-AQI transit and avoid vigorous outdoor cardio during morning thermal inversions.`
+  },
+
+  // Health: Heart and Cardiovascular System
+  heart_health: {
+    title: 'How Air Pollution Impacts Heart Health',
+    response: () => `Cardiovascular effects are one of the most serious consequences of severe urban air pollution:
+
+1. **Systemic Inflammation:** Ultra-fine particles entering the bloodstream trigger systemic oxidative stress, promoting arterial wall inflammation.
+2. **Elevated Blood Pressure:** Autonomic nervous system reflexes triggered by inhaled pollutants cause microvascular constriction, raising arterial blood pressure.
+3. **Arterial Plaque Vulnerability:** Inflammatory responses can destabilize atherosclerotic plaques, increasing the risk of acute coronary events.
+4. **Heart Rate Variability:** Studies show reduced heart rate variability during heavy smog exposure, indicating autonomic imbalance.
+
+**Key Advice:** Individuals with diagnosed hypertension or coronary disease should strictly avoid outdoor morning exertion during Poor to Severe AQI events.`
+  },
+
+  // Health: Diet and Hydration Guidance
+  high_pollution_diet: {
+    title: 'Nutrition & Hydration Guidance During Pollution Episodes',
+    response: () => `While diet cannot replace clean air or certified respiratory protection, sound nutrition supports the body's natural defenses against oxidative stress:
+
+1. **Adequate Hydration:** Drink plenty of water and warm fluids. Well-hydrated mucous membranes trap and expel inhaled dust more effectively than dry airways.
+2. **Antioxidant-Rich Foods:** Incorporate seasonal fruits and vegetables rich in Vitamin C (citrus, amla, guava) and Vitamin E (nuts, seeds) to help combat cellular oxidative stress.
+3. **Anti-Inflammatory Spices:** Warm turmeric milk, ginger tea, and tulsi can help soothe throat irritation and coughs.
+4. **Avoid Heavy, Greasy Meals:** Heavy foods divert energy to digestion. Wholesome, home-cooked meals support general immunity.
+
+*Note: Nutrition supports internal recovery, but does not filter inhaled smog. Always prioritize physical barriers like N95 masks and clean indoor environments.*`
+  },
+
+  // Emergency: What to do during Severe AQI?
+  severe_aqi_guidance: {
+    title: 'Action Protocol for Severe AQI (401–500+)',
+    response: () => `When air quality reaches **Severe**, health risks apply to both healthy adults and vulnerable groups. Follow this action protocol:
+
+1. **Avoid Non-Essential Outdoor Movement:** Strictly postpone non-essential outdoor physical activity, sports, and runs.
+2. **Wear an N95/FFP2 Mask for Essential Travel:** Ensure the metal nose clip is pinched securely against the bridge of your nose with an airtight perimeter seal.
+3. **Keep Vehicle Air on Recirculation:** If driving or cabbing, turn off fresh air intake and set cabin AC to **Recirculation**.
+4. **Manage Indoor Spaces:** Keep exterior windows closed. Run a HEPA air purifier in your primary living or sleeping area. If you do not own a purifier, place damp towels along exterior door gaps.
+5. **Decontaminate on Return:** Remove outerwear at the entrance, wash your face and eyes with clean water, and gargle with warm water.
+6. **Follow Official Advisories:** Check local government pollution control announcements regarding school schedules, construction restrictions, and work-from-home guidelines.`
   },
 
   // Suggested Prompt 1: Plan Day High AQI
@@ -331,14 +434,16 @@ Before heading out, be sure to check the **Daily Routine** tab for hour-by-hour 
 ${!aqi || Number.isNaN(aqiNum)
   ? '⚠️ **Precautionary Indoor Exercise Recommended.** Sensor data is offline. Since unmonitored winter morning smog often traps cold surface soot, indoor workouts are the safest choice.'
   : aqiNum <= 50 
-  ? '✅ **Fully Safe for Outdoor Exercise.** Air quality is Good. Enjoy outdoor running, cycling, or field sports without restriction.'
+  ? '✅ **Fully Safe for Outdoor Exercise (Good Air).** Air quality is clean. Enjoy outdoor running, cycling, or field sports without restriction.'
   : aqiNum <= 100
-  ? '✅ **Outdoor Exercise Allowed (Satisfactory Air).** Safe for healthy adults. Sensitive individuals can monitor for minor throat tickles.'
+  ? '✅ **Outdoor Exercise Suitable (Satisfactory Air).** Safe for the general public. Individuals with sensitive airways should monitor for minor throat dryness.'
   : aqiNum <= 200
-  ? '⚠️ **Outdoor Exercise Allowed with Route Caution.** Safe in green parks away from busy traffic arteries. Asthmatics and sensitive groups should moderate intensity by 20%.'
+  ? '⚠️ **Outdoor Exercise Allowed with Route Caution (Moderate Air).** Safe in green parks away from busy traffic arteries. Sensitive individuals should moderate intensity by 20%.'
   : aqiNum <= 300
-  ? '🛑 **Shift Strenuous Cardio Indoors (Poor Air).** Heavy outdoor running or cycling is not advised. During vigorous exercise, your minute ventilation jumps 10x to 20x, forcing PM2.5 deep into pulmonary alveoli where it cannot be coughed out.'
-  : '🚨 **Strictly Cancel All Outdoor Exertion (Very Poor / Severe).** Hazardous smog levels. Even light walking outdoors triggers rapid airway inflammation. Limit movement to gentle indoor stretching in a sealed room.'}
+  ? '🛑 **Shift Strenuous Cardio Indoors (Poor Air).** Heavy outdoor running or cycling is not advised. During vigorous exercise, your minute ventilation jumps 10x to 20x, pulling PM2.5 deep into pulmonary alveoli where it cannot be coughed out.'
+  : aqiNum <= 400
+  ? '🛑 **Pause Outdoor Aerobic Exertion (Very Poor Air).** Heavy breathing outdoors triggers acute respiratory inflammation. Shift to indoor conditioning with windows closed.'
+  : '🚨 **Avoid Non-Essential Outdoor Exertion (Severe Emergency Air).** Dangerous pollution levels. Follow official local health advisories. Avoid outdoor physical exertion and keep indoor movement gentle in a clean room.'}
 
 **Safe Indoor Alternatives for Elevated Smog Days:**
 - 30-minute living room bodyweight circuit (squats, pushups, core intervals)

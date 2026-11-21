@@ -530,7 +530,7 @@ export default function Dashboard({
               AI Assistant Ready
             </span>
             <span style={{ fontSize: '0.75rem', color: '#7E989C' }}>
-              • Generative Gemini Interface Prepared
+              • Rule-Based Air Quality Companion
             </span>
           </div>
 

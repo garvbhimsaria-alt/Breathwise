@@ -247,6 +247,8 @@ export default function LocationModal({
             {filteredCities.map((city) => {
               const aqiInfo = classifyAqi(city.aqi);
               const isSelected = currentCity?.id === city.id;
+              const displayAqi = city.aqi != null ? city.aqi : 'N/A';
+              const displayPm25 = city.pm25 != null ? `${city.pm25} µg/m³` : 'Data Offline';
 
               return (
                 <div
@@ -281,7 +283,7 @@ export default function LocationModal({
                       fontSize: '0.85rem',
                       color: aqiInfo.color
                     }}>
-                      {city.aqi}
+                      {displayAqi}
                     </div>
                     <div>
                       <div style={{ fontSize: '0.925rem', fontWeight: 700, color: '#102E35' }}>
@@ -303,7 +305,7 @@ export default function LocationModal({
                       fontWeight: 600,
                       border: `1px solid ${aqiInfo.borderColor}`
                     }}>
-                      {city.primaryPollutant}: {city.pm25} µg/m³
+                      {city.primaryPollutant}: {displayPm25}
                     </span>
                     {isSelected && (
                       <Check size={18} color="#102E35" style={{ marginLeft: '4px' }} />
@@ -328,7 +330,7 @@ export default function LocationModal({
           }}>
             <Info size={16} color="#20464A" style={{ flexShrink: 0, marginTop: '2px' }} />
             <div>
-              <strong>Sample Data Notice:</strong> In this frontend prototype stage, all cities use curated sample scenarios reflecting real-world smog patterns. Live sensor provider integration is queued for Stage 2.
+              <strong>Sample Data Notice:</strong> All cities use curated sample scenarios reflecting real-world smog patterns, powered by our deterministic CPCB Decision Engine with clearly labeled demonstration data.
             </div>
           </div>
         </div>

@@ -41,7 +41,7 @@ I help you navigate urban smog by adapting your schedules, recommending safe exe
 
 Currently for **${currentCity.name}**, air quality is ${aqiText}.
 
-*Transparent Architecture Notice: Local Rule-Based Decision Engine active. Prepared for Stage 3 Google Gemini Generative AI integration without overriding safety floor boundaries.*`
+*Architecture Note: Deterministic CPCB Rule-Based Decision Engine active. Guidance verified against standard air-quality safety thresholds.*`
     }
   ]);
 
@@ -106,8 +106,23 @@ Currently for **${currentCity.name}**, air quality is ${aqiText}.
       };
     }
 
-    // 4. Identity & Capabilities Intent
-    if (clean.includes('who are you') || clean.includes('what can you do') || clean.includes('what do you do') || clean === 'help') {
+    // 4. Identity & Capabilities Intent ("Who are you?", "Who created you?", "What can you do?", "What are your capabilities?", "What can you help me with?", "About BreatheWise")
+    const isIdentity = 
+      clean.includes('who are you') || 
+      clean.includes('who created you') || 
+      clean.includes('who made you') || 
+      clean.includes('who built you') || 
+      clean.includes('what can you do') || 
+      clean.includes('what do you do') || 
+      clean.includes('what are your capabilities') || 
+      clean.includes('capabilities') || 
+      clean.includes('what can you help') || 
+      clean.includes('help me with') || 
+      clean.includes('what is breathewise') || 
+      clean.includes('about breathewise') || 
+      clean === 'help';
+
+    if (isIdentity) {
       const resp = AI_KNOWLEDGE_BASE.identity.response();
       return {
         title: AI_KNOWLEDGE_BASE.identity.title,
@@ -115,9 +130,81 @@ Currently for **${currentCity.name}**, air quality is ${aqiText}.
       };
     }
 
-    // 5. Suggested Prompt: Exercise Safety ("Is it safe to exercise outdoors today?", workouts, running, cycling, gym)
+    // 5. Specific FAQ: What is AQI?
+    if (clean.includes('what is aqi') || clean.includes('explain aqi') || clean.includes('meaning of aqi') || clean.includes('air quality index') || clean === 'aqi') {
+      const resp = AI_KNOWLEDGE_BASE.what_is_aqi ? AI_KNOWLEDGE_BASE.what_is_aqi.response() : 'The Air Quality Index (AQI) is a standardized scale converting complex pollutant measurements into a single number reflecting health risks.';
+      return {
+        title: 'Understanding the Air Quality Index (AQI)',
+        response: resp
+      };
+    }
+
+    // 6. Specific FAQ: What is PM2.5?
+    if (clean.includes('pm25') || clean.includes('pm 25') || clean.includes('pm2.5') || clean.includes('what is pm2.5') || clean.includes('particulate matter 2.5')) {
+      const resp = AI_KNOWLEDGE_BASE.what_is_pm25 ? AI_KNOWLEDGE_BASE.what_is_pm25.response() : 'PM2.5 refers to fine particulate matter under 2.5 micrometers in diameter that penetrates deep into the alveolar sacs of the lungs and blood vessels.';
+      return {
+        title: 'What is PM2.5 & Why is it Dangerous?',
+        response: resp
+      };
+    }
+
+    // 7. Specific FAQ: What is PM10?
+    if (clean.includes('pm10') || clean.includes('pm 10') || clean.includes('what is pm10') || clean.includes('coarse dust')) {
+      const resp = AI_KNOWLEDGE_BASE.what_is_pm10 ? AI_KNOWLEDGE_BASE.what_is_pm10.response() : 'PM10 refers to inhalable particles under 10 micrometers in diameter, such as road dust, construction debris, and pollen.';
+      return {
+        title: 'What is PM10 Coarse Particulate Matter?',
+        response: resp
+      };
+    }
+
+    // 8. Specific FAQ: What is Smog / Inversion?
+    if (clean.includes('what is smog') || clean.includes('define smog') || clean.includes('why is smog') || clean.includes('winter inversion') || clean.includes('thermal inversion') || clean.includes('causes of pollution')) {
+      const resp = AI_KNOWLEDGE_BASE.what_is_smog ? AI_KNOWLEDGE_BASE.what_is_smog.response() : AI_KNOWLEDGE_BASE.inversion_science.response();
+      return {
+        title: 'Understanding Winter Smog & Thermal Inversions',
+        response: resp
+      };
+    }
+
+    // 9. Specific Health FAQ: Lungs & Respiratory Health
+    if (clean.includes('lung') || clean.includes('lungs') || clean.includes('respiratory') || clean.includes('cough') || clean.includes('wheezing')) {
+      const resp = AI_KNOWLEDGE_BASE.lungs_health ? AI_KNOWLEDGE_BASE.lungs_health.response() : 'Prolonged exposure to PM2.5 causes airway inflammation, reduced lung capacity, and increased asthma exacerbations.';
+      return {
+        title: 'How Air Pollution Affects Your Lungs',
+        response: resp
+      };
+    }
+
+    // 10. Specific Health FAQ: Heart & Cardiovascular Health
+    if (clean.includes('heart') || clean.includes('cardio') || clean.includes('blood pressure') || clean.includes('stroke') || clean.includes('artery') || clean.includes('vascular')) {
+      const resp = AI_KNOWLEDGE_BASE.heart_health ? AI_KNOWLEDGE_BASE.heart_health.response() : 'Fine particulate matter enters the bloodstream, promoting systemic inflammation, arterial plaque instability, and hypertension.';
+      return {
+        title: 'Cardiovascular Impact of Fine Particulate Matter',
+        response: resp
+      };
+    }
+
+    // 11. Specific Lifestyle FAQ: High Pollution Diet & Nutrition (Checked before daily plan to catch "eat on high pollution day")
+    if (clean.includes('eat') || clean.includes('food') || clean.includes('diet') || clean.includes('nutrition') || clean.includes('drink') || clean.includes('turmeric') || clean.includes('antioxidant')) {
+      const resp = AI_KNOWLEDGE_BASE.high_pollution_diet ? AI_KNOWLEDGE_BASE.high_pollution_diet.response() : 'Support pulmonary defense with antioxidant-rich foods, vitamin C, turmeric (curcumin), and generous hydration.';
+      return {
+        title: 'Nutritional Support During Smog Season',
+        response: resp
+      };
+    }
+
+    // 12. Severe AQI Emergency Protocol
+    if (clean.includes('severe aqi') || clean.includes('aqi above 400') || clean.includes('hazardous aqi') || clean.includes('emergency protocol') || clean.includes('emergency air')) {
+      const resp = AI_KNOWLEDGE_BASE.severe_aqi_guidance ? AI_KNOWLEDGE_BASE.severe_aqi_guidance.response() : 'During Severe AQI (>400), cancel all outdoor activities, seal living spaces, run HEPA air filtration continuously, and wear a sealed N95 mask if outdoors.';
+      return {
+        title: 'Emergency Guidance for Severe AQI (400+)',
+        response: resp
+      };
+    }
+
+    // 13. Suggested Prompt: Exercise Safety ("Is it safe to exercise outdoors today?", workouts, running, cycling, gym)
     // Checked BEFORE daily planning to avoid "today" causing cross-matching!
-    if (clean.includes('exercise') || clean.includes('workout') || clean.includes('run') || clean.includes('jog') || clean.includes('gym') || clean.includes('cycling') || clean.includes('sports outdoors') || clean.includes('safe to run')) {
+    if (clean.includes('exercise') || clean.includes('workout') || clean.includes('run') || clean.includes('jog') || clean.includes('gym') || clean.includes('cycling') || clean.includes('sports outdoors') || clean.includes('safe to run') || clean.includes('outdoor workout')) {
       const resp = AI_KNOWLEDGE_BASE.exercise_safety.response(userProfile.name, currentCity, currentCity.aqi);
       return {
         title: AI_KNOWLEDGE_BASE.exercise_safety.title,
@@ -125,7 +212,7 @@ Currently for **${currentCity.name}**, air quality is ${aqiText}.
       };
     }
 
-    // 6. Suggested Prompt: Indoor Air Quality ("How can I improve indoor air quality?", purifiers, filters, room air)
+    // 14. Suggested Prompt: Indoor Air Quality ("How can I improve indoor air quality?", purifiers, filters, room air)
     if (clean.includes('indoor') || clean.includes('purifier') || clean.includes('air at home') || clean.includes('clean air inside') || clean.includes('clean indoor air')) {
       const resp = AI_KNOWLEDGE_BASE.indoor_air_improvement.response();
       return {
@@ -134,7 +221,7 @@ Currently for **${currentCity.name}**, air quality is ${aqiText}.
       };
     }
 
-    // 7. Suggested Prompt: Commute Precautions ("What precautions should I take during my commute?", traffic, cars, metro)
+    // 15. Suggested Prompt: Commute Precautions ("What precautions should I take during my commute?", traffic, cars, metro)
     if (clean.includes('commute') || clean.includes('traffic') || clean.includes('travel') || clean.includes('metro') || clean.includes('carpool') || clean.includes('transit') || clean.includes('on the road')) {
       const resp = AI_KNOWLEDGE_BASE.commute_precautions.response();
       return {
@@ -143,7 +230,7 @@ Currently for **${currentCity.name}**, air quality is ${aqiText}.
       };
     }
 
-    // 8. Suggested Prompt: Reduce Contribution / Sustainable Lifestyle ("How can I reduce my contribution to air pollution?")
+    // 16. Suggested Prompt: Reduce Contribution / Sustainable Lifestyle ("How can I reduce my contribution to air pollution?")
     if (clean.includes('reduce') || clean.includes('contribution') || clean.includes('my footprint') || clean.includes('sustainable') || clean.includes('cut emissions') || clean.includes('how can i help')) {
       const resp = AI_KNOWLEDGE_BASE.reduce_contribution.response();
       return {
@@ -152,7 +239,7 @@ Currently for **${currentCity.name}**, air quality is ${aqiText}.
       };
     }
 
-    // 9. Specific Domain Topic: Houseplants vs Purifiers (Checked before daily plan to prevent "plant" matching "plan")
+    // 17. Specific Domain Topic: Houseplants vs Purifiers (Checked before daily plan to prevent "plant" matching "plan")
     if (clean.includes('plant') || clean.includes('houseplant') || clean.includes('snake plant') || clean.includes('spider plant') || clean.includes('flora')) {
       const resp = AI_KNOWLEDGE_BASE.houseplants.response();
       return {
@@ -161,7 +248,7 @@ Currently for **${currentCity.name}**, air quality is ${aqiText}.
       };
     }
 
-    // 10. Specific Domain Topic: Mask Guide (N95 vs surgical/cloth)
+    // 18. Specific Domain Topic: Mask Guide (N95 vs surgical/cloth)
     if (clean.includes('mask') || clean.includes('n95') || clean.includes('ffp2') || clean.includes('cloth mask') || clean.includes('respirator')) {
       const resp = AI_KNOWLEDGE_BASE.mask_guide.response();
       return {
@@ -170,16 +257,7 @@ Currently for **${currentCity.name}**, air quality is ${aqiText}.
       };
     }
 
-    // 11. Specific Domain Topic: Inversion Science
-    if (clean.includes('inversion') || clean.includes('why is smog') || clean.includes('why winter') || clean.includes('causes of pollution') || clean.includes('why bad air')) {
-      const resp = AI_KNOWLEDGE_BASE.inversion_science.response();
-      return {
-        title: AI_KNOWLEDGE_BASE.inversion_science.title,
-        response: resp
-      };
-    }
-
-    // 12. Specific Domain Topic: Vulnerable Demographics (Asthma, kids, seniors)
+    // 19. Specific Domain Topic: Vulnerable Demographics (Asthma, kids, seniors)
     if (clean.includes('asthma') || clean.includes('child') || clean.includes('kids') || clean.includes('senior') || clean.includes('elderly') || clean.includes('baby')) {
       const resp = AI_KNOWLEDGE_BASE.vulnerable_groups.response();
       return {
@@ -188,8 +266,18 @@ Currently for **${currentCity.name}**, air quality is ${aqiText}.
       };
     }
 
-    // 13. Suggested Prompt: Plan Day High AQI ("How should I plan my day when AQI is high?", daily routine, schedule)
-    if (clean.includes('plan my day') || /\bplan\b|\bplans\b|\bplanning\b/.test(clean) || clean.includes('routine') || clean.includes('schedule') || (clean.includes('day') && (clean.includes('smog') || clean.includes('aqi') || clean.includes('high')))) {
+    // 20. Suggested Prompt: Plan Day High AQI (Requires explicit planning intent)
+    const isPlanning = 
+      clean.includes('plan my day') || 
+      clean.includes('daily plan') || 
+      clean.includes('daily routine') || 
+      clean.includes('schedule my day') || 
+      clean.includes('plan today') ||
+      clean.includes('plan my routine') ||
+      clean.includes('how should i plan') ||
+      (clean.includes('routine') && (clean.includes('day') || clean.includes('today') || clean.includes('smog') || clean.includes('aqi')));
+
+    if (isPlanning) {
       const resp = AI_KNOWLEDGE_BASE.plan_day_high_aqi.response(userProfile.name, currentCity, currentCity.aqi);
       return {
         title: AI_KNOWLEDGE_BASE.plan_day_high_aqi.title,
@@ -197,19 +285,18 @@ Currently for **${currentCity.name}**, air quality is ${aqiText}.
       };
     }
 
-    // 14. Intelligent Fallback for Unmatched Questions (Addresses question contextually without cookie-cutter repetition)
-    const cat = classifyAqi(currentCity.aqi);
+    // 21. Neutral, Transparent Fallback for Unmatched Questions (No assumed asthma, no unsolicited AQI dump)
     return {
-      title: `Guidance on "${raw.length > 35 ? raw.substring(0, 32) + '...' : raw}"`,
-      response: `Thank you for asking about **"${raw}"**.
+      title: `Guidance on "${raw.length > 32 ? raw.substring(0, 30) + '...' : raw}"`,
+      response: `Thank you for asking! I am **BreatheWise AI**, your companion for urban air quality, personal exposure reduction, and smog management.
 
-Here is our targeted advice based on current conditions in **${currentCity.name}** (AQI: **${currentCity.aqi}** — *${cat.category}*):
+I do not have specialized data for **"${raw}"**, but I can provide evidence-based guidance on:
+- **AQI & Pollutants:** Understanding CPCB AQI categories, PM2.5, PM10, and thermal inversions.
+- **Daily Schedules & Routines:** Adapting wake-up, exercise, and ventilation windows to daily smog cycles.
+- **Health & Protection:** Proper N95 mask sealing, indoor air purification, and heart/lung protection.
+- **Commute & Lifestyle:** Public transit precautions and cutting personal emissions.
 
-1. **Environmental Context:** At AQI ${currentCity.aqi}, ambient PM2.5 levels are ${currentCity.aqi > 100 ? 'significantly elevated above safe thresholds' : 'within manageable limits'}. Airway protection should be prioritized during early morning and late evening hours.
-2. **Actionable Direction:** If this activity involves outdoor exposure, consider timing it between **1:00 PM and 3:00 PM** when solar warming helps disperse ground-level smog layers.
-3. **Personalization Notice:** Your profile sensitivity (${userProfile.healthSensitivity !== 'none' ? userProfile.healthSensitivity.replace('_', ' ') : 'standard'}) has been accounted for in the daily routine timeline.
-
-*(Demo Mode Note: In Stage 2, this specific query will be processed directly by Google Gemini 1.5/2.0 with live generative reasoning and multi-turn dialogue).*`
+Please feel free to ask any question regarding air quality or daily routines!`
     };
   };
 
@@ -556,7 +643,7 @@ Here is our targeted advice based on current conditions in **${currentCity.name}
         }}>
           <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
             <Info size={12} color="#7E989C" />
-            Deterministic rule-based responses active. Structured Gemini payload prepared for Stage 3.
+            Deterministic CPCB rule-based responses active. Decision Engine context payload available.
           </span>
           {engineOutput?.geminiContext && (
             <button
@@ -575,13 +662,13 @@ Here is our targeted advice based on current conditions in **${currentCity.name}
               }}
             >
               <Code size={12} color="#20464A" />
-              <span>{showPayloadInspection ? 'Hide' : 'Inspect'} Stage 3 Gemini Context</span>
+              <span>{showPayloadInspection ? 'Hide' : 'Inspect'} Decision Engine Context Payload</span>
               {showPayloadInspection ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
             </button>
           )}
         </div>
 
-        {/* Collapsible Gemini Context Inspector for Hackathon Reviewers */}
+        {/* Collapsible Decision Engine Context Inspector */}
         {showPayloadInspection && engineOutput?.geminiContext && (
           <div style={{
             marginTop: '8px',
@@ -598,7 +685,7 @@ Here is our targeted advice based on current conditions in **${currentCity.name}
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px', color: '#FFFFFF', fontWeight: 700 }}>
               <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                 <Lock size={12} color="#8DE0C3" />
-                Prepared Gemini Payload (`engineOutput.geminiContext`)
+                Decision Engine System Payload (`engineOutput.geminiContext`)
               </span>
               <span style={{ fontSize: '0.675rem', color: '#8DE0C3' }}>Read-only Contract</span>
             </div>
