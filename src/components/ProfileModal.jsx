@@ -274,6 +274,58 @@ export default function ProfileModal({
             </div>
           </div>
 
+          {/* Daily Schedule Anchors (Wake-up & Bedtime) */}
+          <div>
+            <label style={{ display: 'block', fontSize: '0.825rem', fontWeight: 700, color: '#102E35', marginBottom: '6px' }}>
+              Daily Schedule (Anchors Your Routine Timeline)
+            </label>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+              <div>
+                <span style={{ display: 'block', fontSize: '0.75rem', color: '#6B878D', marginBottom: '4px' }}>
+                  Target Wake-Up Time
+                </span>
+                <input
+                  type="time"
+                  value={formData.wakeUpTime || '06:30'}
+                  onChange={(e) => setFormData({ ...formData, wakeUpTime: e.target.value })}
+                  style={{
+                    width: '100%',
+                    padding: '8px 12px',
+                    borderRadius: '10px',
+                    border: '1px solid #E2ECE9',
+                    backgroundColor: '#F3F8F6',
+                    fontSize: '0.85rem',
+                    color: '#102E35',
+                    fontWeight: 600,
+                    outline: 'none'
+                  }}
+                />
+              </div>
+
+              <div>
+                <span style={{ display: 'block', fontSize: '0.75rem', color: '#6B878D', marginBottom: '4px' }}>
+                  Target Sleep Time
+                </span>
+                <input
+                  type="time"
+                  value={formData.sleepTime || '22:30'}
+                  onChange={(e) => setFormData({ ...formData, sleepTime: e.target.value })}
+                  style={{
+                    width: '100%',
+                    padding: '8px 12px',
+                    borderRadius: '10px',
+                    border: '1px solid #E2ECE9',
+                    backgroundColor: '#F3F8F6',
+                    fontSize: '0.85rem',
+                    color: '#102E35',
+                    fontWeight: 600,
+                    outline: 'none'
+                  }}
+                />
+              </div>
+            </div>
+          </div>
+
           {/* Health Sensitivity */}
           <div>
             <label style={{ display: 'block', fontSize: '0.825rem', fontWeight: 700, color: '#102E35', marginBottom: '6px' }}>

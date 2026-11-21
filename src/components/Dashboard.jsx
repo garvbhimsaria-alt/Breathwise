@@ -17,20 +17,32 @@ import {
   HelpCircle,
   ArrowUpRight,
   SlidersHorizontal,
-  RefreshCw
+  RefreshCw,
+  AlertCircle
 } from 'lucide-react';
-import { getAqiCategory, SCENARIO_PRESETS } from '../data/mockData';
+import { SCENARIO_PRESETS } from '../data/mockData';
 
 export default function Dashboard({ 
   currentCity, 
   userProfile, 
+  engineOutput,
   activeScenarioId,
   onSelectScenario,
   onOpenLocationModal, 
   onNavigateToTab,
   onAskAiQuestion 
 }) {
-  const aqiInfo = getAqiCategory(currentCity.aqi);
+  const aqiResult = engineOutput?.aqiResult || {
+    status: 'VALID',
+    category: 'Good',
+    color: '#10B981',
+    bgColor: '#ECFDF5',
+    borderColor: '#A7F3D0',
+    textColor: '#065F46',
+    healthImpact: 'Air quality is satisfactory.'
+  };
+
+  const precautionCards = engineOutput?.precautionCards || [];
 
   // Determine time-of-day greeting
   const getGreeting = () => {
@@ -39,6 +51,9 @@ export default function Dashboard({
     if (hour < 18) return 'Good afternoon';
     return 'Good evening';
   };
+
+  const isDataMissing = aqiResult.status === 'MISSING' || aqiResult.status === 'INVALID';
+  const isDataStale = aqiResult.status === 'STALE';
 
   return (
     <div className="animate-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
@@ -62,7 +77,7 @@ export default function Dashboard({
             {getGreeting()}, {userProfile.name || 'Friend'}
           </h1>
           <p style={{ fontSize: '0.925rem', color: '#6B878D', marginTop: '4px' }}>
-            Here is your urban air-quality summary and routine guidance for today.
+            CPCB rule-based atmospheric guidance tailored to your daily schedule and profile.
           </p>
         </div>
 
@@ -108,17 +123,17 @@ export default function Dashboard({
                 borderRadius: '9999px',
                 fontWeight: 700
               }}>
-                {currentCity.isScenarioSimulated ? `${currentCity.scenarioLabel} Scenario` : 'Sample Data'}
+                {currentCity.isScenarioSimulated ? `${currentCity.scenarioLabel}` : 'Sample Data'}
               </span>
             </div>
             <div style={{ fontSize: '0.75rem', color: '#6B878D' }}>
-              {currentCity.region || 'Region'} • Click to change city
+              {currentCity.region || 'Region'} • Click to switch city
             </div>
           </div>
         </div>
       </div>
 
-      {/* Synchronized Scenario Controller Bar on Dashboard */}
+      {/* Decision Engine CPCB Scenario Switcher */}
       <div style={{
         backgroundColor: '#FFFFFF',
         border: '1px solid #C5DDD7',
@@ -133,10 +148,10 @@ export default function Dashboard({
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
           <SlidersHorizontal size={16} color="#20464A" />
           <span style={{ fontSize: '0.8rem', fontWeight: 700, color: '#102E35' }}>
-            Simulate AQI Scenario:
+            Decision Engine Testing Controller:
           </span>
           <span style={{ fontSize: '0.725rem', color: '#6B878D' }}>
-            (Synchronized with Daily Routine)
+            (CPCB NAQI Standard Breakpoints)
           </span>
         </div>
 
@@ -160,7 +175,7 @@ export default function Dashboard({
                   transition: 'all 0.15s ease'
                 }}
               >
-                {s.label} ({s.aqi})
+                {s.label} {s.aqi !== null ? `(${s.aqi})` : ''}
               </button>
             );
           })}
@@ -193,7 +208,7 @@ export default function Dashboard({
       <div 
         className="card"
         style={{
-          borderLeft: `6px solid ${aqiInfo.color}`,
+          borderLeft: `6px solid ${aqiResult.color}`,
           backgroundColor: '#FFFFFF',
           borderRadius: '24px',
           padding: '28px',
@@ -215,56 +230,95 @@ export default function Dashboard({
             textAlign: 'center',
             padding: '20px',
             borderRadius: '20px',
-            backgroundColor: aqiInfo.bgColor,
-            border: `1.5px solid ${aqiInfo.borderColor}`
+            backgroundColor: aqiResult.bgColor,
+            border: `1.5px solid ${aqiResult.borderColor}`
           }}>
             <div style={{
               fontSize: '0.75rem',
               fontWeight: 700,
               textTransform: 'uppercase',
               letterSpacing: '0.06em',
-              color: aqiInfo.textColor,
+              color: aqiResult.textColor,
               marginBottom: '4px'
             }}>
-              Current Air Quality Index
+              CPCB Air Quality Index
             </div>
 
             <div style={{
-              fontSize: '4.2rem',
+              fontSize: isDataMissing ? '2.4rem' : '4.2rem',
               fontWeight: 900,
-              lineHeight: 1,
-              color: aqiInfo.color,
+              lineHeight: 1.1,
+              color: aqiResult.color,
               letterSpacing: '-0.04em',
               margin: '8px 0'
             }}>
-              {currentCity.aqi}
+              {isDataMissing ? 'N/A' : aqiResult.aqi}
             </div>
 
             <div style={{
-              fontSize: '1rem',
+              fontSize: '0.95rem',
               fontWeight: 800,
-              color: aqiInfo.textColor,
+              color: aqiResult.textColor,
               padding: '4px 14px',
               borderRadius: '9999px',
               backgroundColor: '#FFFFFF',
               boxShadow: '0 2px 6px rgba(0, 0, 0, 0.05)',
-              border: `1px solid ${aqiInfo.borderColor}`,
+              border: `1px solid ${aqiResult.borderColor}`,
               marginBottom: '8px'
             }}>
-              {aqiInfo.category}
+              {aqiResult.category}
             </div>
 
-            <div style={{ fontSize: '0.775rem', color: aqiInfo.textColor, fontWeight: 500 }}>
-              Primary concern: <strong>{currentCity.primaryPollutant}</strong>
+            <div style={{ fontSize: '0.775rem', color: aqiResult.textColor, fontWeight: 500 }}>
+              Primary concern: <strong>{currentCity.primaryPollutant || 'Particulates'}</strong>
             </div>
           </div>
 
           {/* Right: Explanation & Pollutant Breakdown */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
+            {/* Outdated / Stale or Missing Data Warning Banner */}
+            {isDataStale && (
+              <div style={{
+                padding: '10px 14px',
+                borderRadius: '10px',
+                backgroundColor: '#FFFBEB',
+                border: '1px solid #FDE68A',
+                color: '#92400E',
+                fontSize: '0.8rem',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px'
+              }}>
+                <AlertCircle size={16} color="#D97706" style={{ flexShrink: 0 }} />
+                <span>
+                  <strong>Outdated Sensor Data:</strong> This reading was recorded {aqiResult.lastUpdatedText}. Winter inversion conditions shift rapidly; exercise heightened personal caution.
+                </span>
+              </div>
+            )}
+
+            {isDataMissing && (
+              <div style={{
+                padding: '10px 14px',
+                borderRadius: '10px',
+                backgroundColor: '#F3F8F6',
+                border: '1px solid #C5DDD7',
+                color: '#102E35',
+                fontSize: '0.8rem',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px'
+              }}>
+                <AlertCircle size={16} color="#20464A" style={{ flexShrink: 0 }} />
+                <span>
+                  <strong>Sensor Offline:</strong> Reliable air quality telemetry is currently unavailable. BreatheWise does not invent numbers; we recommend default winter morning precautions.
+                </span>
+              </div>
+            )}
+
             <div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
                 <span style={{ fontSize: '0.85rem', fontWeight: 700, color: '#102E35' }}>
-                  What this means today:
+                  What this means according to CPCB guidelines:
                 </span>
               </div>
               <p style={{
@@ -272,7 +326,7 @@ export default function Dashboard({
                 color: '#3D5A60',
                 lineHeight: 1.55
               }}>
-                {aqiInfo.explanation}
+                {aqiResult.healthImpact}
               </p>
             </div>
 
@@ -290,10 +344,10 @@ export default function Dashboard({
               }}>
                 <div style={{ fontSize: '0.725rem', fontWeight: 600, color: '#6B878D' }}>PM2.5</div>
                 <div style={{ fontSize: '1.15rem', fontWeight: 800, color: '#102E35' }}>
-                  {currentCity.pm25} <span style={{ fontSize: '0.7rem', fontWeight: 500 }}>µg/m³</span>
+                  {currentCity.pm25 !== null ? currentCity.pm25 : '—'} <span style={{ fontSize: '0.7rem', fontWeight: 500 }}>µg/m³</span>
                 </div>
                 <div style={{ fontSize: '0.675rem', color: currentCity.pm25 > 60 ? '#EF4444' : '#10B981', fontWeight: 600 }}>
-                  {currentCity.pm25 > 60 ? 'Above Guide' : 'Moderate'}
+                  {currentCity.pm25 !== null ? (currentCity.pm25 > 60 ? 'Above Guide' : 'Moderate') : 'Offline'}
                 </div>
               </div>
 
@@ -305,10 +359,10 @@ export default function Dashboard({
               }}>
                 <div style={{ fontSize: '0.725rem', fontWeight: 600, color: '#6B878D' }}>PM10</div>
                 <div style={{ fontSize: '1.15rem', fontWeight: 800, color: '#102E35' }}>
-                  {currentCity.pm10} <span style={{ fontSize: '0.7rem', fontWeight: 500 }}>µg/m³</span>
+                  {currentCity.pm10 !== null ? currentCity.pm10 : '—'} <span style={{ fontSize: '0.7rem', fontWeight: 500 }}>µg/m³</span>
                 </div>
                 <div style={{ fontSize: '0.675rem', color: currentCity.pm10 > 100 ? '#EA580C' : '#10B981', fontWeight: 600 }}>
-                  Coarse dust
+                  {currentCity.pm10 !== null ? 'Coarse dust' : 'Offline'}
                 </div>
               </div>
 
@@ -320,7 +374,7 @@ export default function Dashboard({
               }}>
                 <div style={{ fontSize: '0.725rem', fontWeight: 600, color: '#6B878D' }}>Nitrogen NO2</div>
                 <div style={{ fontSize: '1.15rem', fontWeight: 800, color: '#102E35' }}>
-                  {currentCity.no2} <span style={{ fontSize: '0.7rem', fontWeight: 500 }}>ppb</span>
+                  {currentCity.no2 !== null ? currentCity.no2 : '—'} <span style={{ fontSize: '0.7rem', fontWeight: 500 }}>ppb</span>
                 </div>
                 <div style={{ fontSize: '0.675rem', color: '#6B878D', fontWeight: 500 }}>Traffic emission</div>
               </div>
@@ -355,7 +409,7 @@ export default function Dashboard({
             }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                 <Clock size={14} color="#7E989C" />
-                <span>Source: {currentCity.dataSource || 'Demo Air Quality Network'} • Updated {currentCity.lastUpdated || 'recently'}</span>
+                <span>Source: {currentCity.dataSource || 'Demo Air Quality Network'} • {aqiResult.lastUpdatedText || 'Updated recently'}</span>
               </div>
               <div style={{
                 display: 'inline-flex',
@@ -364,14 +418,14 @@ export default function Dashboard({
                 color: currentCity.isScenarioSimulated ? '#7C3AED' : '#C2410C',
                 fontWeight: 600
               }}>
-                <span>● {currentCity.isScenarioSimulated ? `Simulated ${currentCity.scenarioLabel} Scenario` : 'Clearly Labelled Sample Scenario'}</span>
+                <span>● {currentCity.isScenarioSimulated ? `Simulated ${currentCity.scenarioLabel}` : 'Clearly Labelled Sample Scenario'}</span>
               </div>
             </div>
           </div>
         </div>
       </div>
 
-      {/* Personalized Precaution Cards Grid */}
+      {/* Explainable Personalized Precaution Cards Grid (Generated by Rule Engine) */}
       <div>
         <div style={{
           display: 'flex',
@@ -381,10 +435,10 @@ export default function Dashboard({
         }}>
           <div>
             <h2 style={{ fontSize: '1.25rem', fontWeight: 800, color: '#102E35' }}>
-              Personalized Smog Precautions
+              Engine-Generated Precautions
             </h2>
             <p style={{ fontSize: '0.825rem', color: '#6B878D' }}>
-              Calibrated to {currentCity.name}'s current air quality and your profile preferences
+              Logical rules evaluated against {currentCity.name}'s CPCB reading and your profile preferences
             </p>
           </div>
           <button
@@ -392,7 +446,7 @@ export default function Dashboard({
             className="btn btn-secondary"
             style={{ fontSize: '0.8rem', padding: '6px 12px' }}
           >
-            <span>View Full Timeline</span>
+            <span>View Reimagined Day</span>
             <ChevronRight size={14} />
           </button>
         </div>
@@ -402,117 +456,47 @@ export default function Dashboard({
           gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))',
           gap: '16px'
         }}>
-          {/* Card 1: Mask Advisory */}
-          <div className="card" style={{ padding: '20px', borderRadius: '18px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '10px' }}>
-              <div style={{
-                width: '36px',
-                height: '36px',
-                borderRadius: '10px',
-                backgroundColor: currentCity.aqi > 150 ? '#FEF2F2' : (currentCity.aqi > 100 ? '#FFF7ED' : '#ECFDF5'),
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center'
-              }}>
-                <ShieldAlert size={18} color={currentCity.aqi > 150 ? '#EF4444' : (currentCity.aqi > 100 ? '#EA580C' : '#10B981')} />
-              </div>
+          {precautionCards.map((card) => (
+            <div key={card.id} className="card" style={{ padding: '20px', borderRadius: '18px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
               <div>
-                <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#6B878D', textTransform: 'uppercase' }}>
-                  Outdoor Masking
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+                  <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#6B878D', textTransform: 'uppercase' }}>
+                    {card.title}
+                  </div>
+                  <span style={{
+                    fontSize: '0.7rem',
+                    fontWeight: 700,
+                    padding: '2px 8px',
+                    borderRadius: '9999px',
+                    backgroundColor: card.severity === 'emergency' ? '#FEF2F2' : (card.severity === 'high' ? '#FFF7ED' : '#F3F8F6'),
+                    color: card.severity === 'emergency' ? '#7F1D1D' : (card.severity === 'high' ? '#C2410C' : '#102E35'),
+                    border: '1px solid #E2ECE9'
+                  }}>
+                    {card.status}
+                  </span>
                 </div>
-                <div style={{ fontSize: '0.925rem', fontWeight: 700, color: '#102E35' }}>
-                  {currentCity.aqi > 200 ? 'N95 / FFP2 Mandatory' : (currentCity.aqi > 100 ? 'N95 Strongly Advised' : 'Mask Optional')}
-                </div>
-              </div>
-            </div>
-            <p style={{ fontSize: '0.825rem', color: '#3D5A60', lineHeight: 1.5 }}>
-              {aqiInfo.maskRecommendation}
-            </p>
-          </div>
 
-          {/* Card 2: Ventilation Advisory */}
-          <div className="card" style={{ padding: '20px', borderRadius: '18px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '10px' }}>
-              <div style={{
-                width: '36px',
-                height: '36px',
-                borderRadius: '10px',
-                backgroundColor: currentCity.aqi > 200 ? '#FEF2F2' : (currentCity.aqi > 100 ? '#FFF7ED' : '#EBF8F4'),
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center'
-              }}>
-                <Wind size={18} color={currentCity.aqi > 200 ? '#EF4444' : '#20464A'} />
-              </div>
-              <div>
-                <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#6B878D', textTransform: 'uppercase' }}>
-                  Indoor Ventilation
+                <div style={{ fontSize: '0.925rem', fontWeight: 700, color: '#102E35', marginBottom: '8px', lineHeight: 1.4 }}>
+                  {card.action}
                 </div>
-                <div style={{ fontSize: '0.925rem', fontWeight: 700, color: '#102E35' }}>
-                  {currentCity.aqi > 200 ? 'Keep Windows Sealed' : (currentCity.aqi > 100 ? 'Restricted Midday Window' : 'Natural Cross-Ventilation')}
-                </div>
-              </div>
-            </div>
-            <p style={{ fontSize: '0.825rem', color: '#3D5A60', lineHeight: 1.5 }}>
-              {aqiInfo.ventilationAdvice}
-            </p>
-          </div>
 
-          {/* Card 3: Exercise Advisory */}
-          <div className="card" style={{ padding: '20px', borderRadius: '18px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '10px' }}>
-              <div style={{
-                width: '36px',
-                height: '36px',
-                borderRadius: '10px',
-                backgroundColor: currentCity.aqi > 100 ? '#FEF2F2' : '#ECFDF5',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center'
-              }}>
-                <Activity size={18} color={currentCity.aqi > 100 ? '#EF4444' : '#10B981'} />
+                <p style={{ fontSize: '0.8rem', color: '#3D5A60', lineHeight: 1.45, marginBottom: '10px' }}>
+                  <strong>Why?</strong> {card.reason}
+                </p>
               </div>
-              <div>
-                <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#6B878D', textTransform: 'uppercase' }}>
-                  Physical Exercise
-                </div>
-                <div style={{ fontSize: '0.925rem', fontWeight: 700, color: '#102E35' }}>
-                  {currentCity.aqi > 200 ? 'Zero Outdoor Exertion' : (currentCity.aqi > 100 ? 'Shift Indoors' : 'Safe Outdoors')}
-                </div>
-              </div>
-            </div>
-            <p style={{ fontSize: '0.825rem', color: '#3D5A60', lineHeight: 1.5 }}>
-              {aqiInfo.outdoorExercise}
-            </p>
-          </div>
 
-          {/* Card 4: Health Sensitivity Alert */}
-          <div className="card" style={{ padding: '20px', borderRadius: '18px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '10px' }}>
               <div style={{
-                width: '36px',
-                height: '36px',
-                borderRadius: '10px',
-                backgroundColor: '#F5F3FF',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center'
+                backgroundColor: '#F3F8F6',
+                borderRadius: '8px',
+                padding: '8px 10px',
+                fontSize: '0.75rem',
+                color: '#6B878D'
               }}>
-                <ShieldCheck size={18} color="#8B5CF6" />
-              </div>
-              <div>
-                <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#6B878D', textTransform: 'uppercase' }}>
-                  Sensitivity Advisory
-                </div>
-                <div style={{ fontSize: '0.925rem', fontWeight: 700, color: '#102E35' }}>
-                  {userProfile.healthSensitivity !== 'none' ? 'Profile Notice Active' : 'General Population'}
-                </div>
+                <span style={{ fontWeight: 600, color: '#20464A' }}>Alternative: </span>
+                <span>{card.alternative}</span>
               </div>
             </div>
-            <p style={{ fontSize: '0.825rem', color: '#3D5A60', lineHeight: 1.5 }}>
-              {aqiInfo.vulnerableGroupNotice}
-            </p>
-          </div>
+          ))}
         </div>
       </div>
 

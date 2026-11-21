@@ -11,32 +11,43 @@ import {
   Activity, 
   Compass, 
   Moon, 
-  SlidersHorizontal,
-  Info,
-  RefreshCw,
-  ShieldAlert,
-  Check
+  SlidersHorizontal, 
+  Info, 
+  RefreshCw, 
+  ShieldAlert, 
+  Check, 
+  Sliders,
+  AlertTriangle,
+  Lock
 } from 'lucide-react';
-import { generatePersonalizedRoutine, SCENARIO_PRESETS } from '../data/mockData';
+import { SCENARIO_PRESETS } from '../data/mockData';
+import { generateDynamicRoutine } from '../engine';
 
 export default function DailyRoutine({ 
   currentCity, 
   userProfile, 
+  engineOutput,
   activeScenarioId,
   onSelectScenario,
   onUpdateProfile 
 }) {
-  const [simulatedLifestyle, setSimulatedLifestyle] = useState(userProfile.lifestyle);
-  const [simulatedPurifier, setSimulatedPurifier] = useState(userProfile.hasAirPurifier);
+  const [simulatedLifestyle, setSimulatedLifestyle] = useState(userProfile.lifestyle || 'working_professional');
+  const [simulatedPurifier, setSimulatedPurifier] = useState(userProfile.hasAirPurifier ?? true);
+  const [simulatedWakeUp, setSimulatedWakeUp] = useState(userProfile.wakeUpTime || '06:30');
+  const [simulatedSleep, setSimulatedSleep] = useState(userProfile.sleepTime || '22:30');
 
   // Active routine based on effective city AQI and lifestyle inputs
   const dynamicProfile = {
     ...userProfile,
     lifestyle: simulatedLifestyle,
-    hasAirPurifier: simulatedPurifier
+    hasAirPurifier: simulatedPurifier,
+    wakeUpTime: simulatedWakeUp,
+    sleepTime: simulatedSleep
   };
 
-  const timelineSteps = generatePersonalizedRoutine(dynamicProfile, currentCity.aqi);
+  // Generate dynamic, explainable routine from core engine
+  const effectiveAqiObj = currentCity.aqiResult || { aqi: currentCity.aqi, valid: currentCity.aqi !== null };
+  const timelineSteps = generateDynamicRoutine(dynamicProfile, effectiveAqiObj);
 
   const iconMap = {
     Activity: Activity,
@@ -49,33 +60,57 @@ export default function DailyRoutine({
 
   // Determine current active tier label for summary indicator
   const getActiveScenarioSummary = () => {
-    if (currentCity.aqi <= 50) {
+    const aqiRes = currentCity.aqiResult;
+    if (aqiRes && !aqiRes.valid) {
       return {
-        label: 'Good AQI Scenario',
+        label: 'Sensor Data Offline / Missing',
+        color: '#6B7280',
+        bgColor: '#F3F4F6',
+        rule: 'Precautionary default: Exercise indoors • Follow winter baseline smog precautions'
+      };
+    }
+    const aqi = currentCity.aqi ?? 150;
+    if (aqi <= 50) {
+      return {
+        label: 'Good AQI (0–50)',
         color: '#10B981',
         bgColor: '#ECFDF5',
         rule: 'Unrestricted outdoor exercise • Full home & workspace natural cross-ventilation'
       };
-    } else if (currentCity.aqi <= 100) {
+    } else if (aqi <= 100) {
       return {
-        label: 'Moderate AQI Scenario',
+        label: 'Satisfactory AQI (51–100)',
+        color: '#84CC16',
+        bgColor: '#F7FEE7',
+        rule: 'Outdoor activities suitable • Minor caution for sensitive respiratory profiles'
+      };
+    } else if (aqi <= 200) {
+      return {
+        label: 'Moderate AQI (101–200)',
         color: '#F59E0B',
         bgColor: '#FFFBEB',
         rule: 'Exercise caution along roadside corridors • Controlled midday ventilation window'
       };
-    } else if (currentCity.aqi <= 200) {
+    } else if (aqi <= 300) {
       return {
-        label: 'Poor AQI Scenario (Unhealthy)',
+        label: 'Poor AQI (201–300)',
+        color: '#F97316',
+        bgColor: '#FFF7ED',
+        rule: 'Shift strenuous cardio indoors • N95 commute protection • 15-min strict midday flush'
+      };
+    } else if (aqi <= 400) {
+      return {
+        label: 'Very Poor AQI (301–400)',
         color: '#EF4444',
         bgColor: '#FEF2F2',
-        rule: 'Shift strenuous cardio indoors • N95 commute protection • 15-min strict midday flush'
+        rule: 'Avoid all outdoor exertion • N95 perimeter seal • Close building envelope'
       };
     } else {
       return {
-        label: 'Severe AQI Scenario (Hazardous)',
+        label: 'Severe AQI (401–500+)',
         color: '#7F1D1D',
         bgColor: '#FEF2F2',
-        rule: 'Strictly zero outdoor exertion • Full building envelope seal • Mechanical HEPA air cleaning'
+        rule: 'Emergency Protocol: Zero outdoor exertion • Full building envelope seal • Mechanical HEPA air cleaning'
       };
     }
   };
@@ -189,11 +224,16 @@ export default function DailyRoutine({
           </div>
         </div>
 
-        {/* 4 AQI Scenario Buttons */}
+        {/* Scenario Selection Buttons */}
         <div style={{ marginBottom: '18px' }}>
-          <label style={{ display: 'block', fontSize: '0.775rem', fontWeight: 700, color: '#6B878D', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-            Select AQI Scenario (Synchronized with Dashboard & App)
-          </label>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+            <label style={{ fontSize: '0.775rem', fontWeight: 700, color: '#6B878D', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+              Select AQI Scenario (Official CPCB Breakpoints + Sensor Fallbacks)
+            </label>
+            <span style={{ fontSize: '0.7rem', color: '#20464A', fontWeight: 600 }}>
+              Synchronized with Dashboard
+            </span>
+          </div>
           <div style={{
             display: 'grid',
             gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))',
@@ -203,9 +243,11 @@ export default function DailyRoutine({
               const isSelected = activeScenarioId === scenario.id || 
                 (activeScenarioId === 'current' && (
                   (scenario.id === 'good' && currentCity.aqi <= 50) ||
-                  (scenario.id === 'moderate' && currentCity.aqi > 50 && currentCity.aqi <= 100) ||
-                  (scenario.id === 'poor' && currentCity.aqi > 100 && currentCity.aqi <= 200) ||
-                  (scenario.id === 'severe' && currentCity.aqi > 200)
+                  (scenario.id === 'satisfactory' && currentCity.aqi > 50 && currentCity.aqi <= 100) ||
+                  (scenario.id === 'moderate' && currentCity.aqi > 100 && currentCity.aqi <= 200) ||
+                  (scenario.id === 'poor' && currentCity.aqi > 200 && currentCity.aqi <= 300) ||
+                  (scenario.id === 'very_poor' && currentCity.aqi > 300 && currentCity.aqi <= 400) ||
+                  (scenario.id === 'severe' && currentCity.aqi > 400)
                 ));
 
               return (
@@ -224,11 +266,11 @@ export default function DailyRoutine({
                   }}
                 >
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '2px' }}>
-                    <span style={{ fontSize: '0.875rem', fontWeight: 800, color: isSelected ? scenario.color : '#102E35' }}>
+                    <span style={{ fontSize: '0.85rem', fontWeight: 800, color: isSelected ? scenario.color : '#102E35' }}>
                       {scenario.label}
                     </span>
                     <span style={{
-                      fontSize: '0.7rem',
+                      fontSize: '0.675rem',
                       fontWeight: 700,
                       color: scenario.color,
                       backgroundColor: '#FFFFFF',
@@ -236,10 +278,10 @@ export default function DailyRoutine({
                       borderRadius: '9999px',
                       border: `1px solid ${scenario.color}40`
                     }}>
-                      AQI {scenario.aqi}
+                      {scenario.aqi !== null ? `AQI ${scenario.aqi}` : 'Offline'}
                     </span>
                   </div>
-                  <div style={{ fontSize: '0.7rem', color: '#6B878D' }}>
+                  <div style={{ fontSize: '0.7rem', color: '#6B878D', lineHeight: 1.25 }}>
                     {scenario.desc}
                   </div>
                 </button>
@@ -250,10 +292,10 @@ export default function DailyRoutine({
 
         {/* Active Scenario Live Guidance Indicator Bar */}
         <div style={{
-          padding: '10px 14px',
+          padding: '12px 16px',
           borderRadius: '12px',
           backgroundColor: summary.bgColor,
-          border: `1px solid ${summary.color}40`,
+          border: `1.5px solid ${summary.color}40`,
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
@@ -269,7 +311,7 @@ export default function DailyRoutine({
               backgroundColor: summary.color
             }} />
             <strong style={{ fontSize: '0.825rem', color: summary.color }}>
-              {summary.label} (Current AQI {currentCity.aqi}):
+              {summary.label} {currentCity.aqi !== null ? `(AQI ${currentCity.aqi})` : '(Offline)'}:
             </strong>
             <span style={{ fontSize: '0.825rem', color: '#102E35' }}>
               {summary.rule}
@@ -284,14 +326,14 @@ export default function DailyRoutine({
             borderRadius: '9999px',
             fontWeight: 600
           }}>
-            Synchronized with Dashboard
+            CPCB NAQI Standard
           </span>
         </div>
 
-        {/* Secondary Personalization Toggles: Lifestyle & Purifier */}
+        {/* Secondary Personalization Toggles: Lifestyle, Purifier, & Schedule */}
         <div style={{
           display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
           gap: '14px',
           borderTop: '1px solid #E2ECE9',
           paddingTop: '14px'
@@ -299,7 +341,7 @@ export default function DailyRoutine({
           {/* Lifestyle / Occupation Selector */}
           <div>
             <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 700, color: '#6B878D', marginBottom: '6px', textTransform: 'uppercase' }}>
-              Saved Lifestyle Adaptation
+              Lifestyle & Commute Profile
             </label>
             <select
               value={simulatedLifestyle}
@@ -316,11 +358,40 @@ export default function DailyRoutine({
                 fontWeight: 600
               }}
             >
-              <option value="working_professional">Working Professional (Daily Commuter)</option>
+              <option value="working_professional">Working Professional (Daily Commute)</option>
               <option value="student">Student (Campus Schedule)</option>
               <option value="wfh">Work From Home (Indoor Control)</option>
               <option value="outdoor_worker">Outdoor / Field Work</option>
             </select>
+          </div>
+
+          {/* Wake-up Time Anchor */}
+          <div>
+            <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 700, color: '#6B878D', marginBottom: '6px', textTransform: 'uppercase' }}>
+              Wake-Up Time (Re-anchors Schedule)
+            </label>
+            <div style={{ display: 'flex', gap: '6px' }}>
+              {['05:30', '06:30', '07:30', '08:30'].map((time) => (
+                <button
+                  key={time}
+                  type="button"
+                  onClick={() => setSimulatedWakeUp(time)}
+                  style={{
+                    flex: 1,
+                    padding: '8px 4px',
+                    borderRadius: '10px',
+                    border: `1.5px solid ${simulatedWakeUp === time ? '#8DE0C3' : '#E2ECE9'}`,
+                    backgroundColor: simulatedWakeUp === time ? 'rgba(141, 224, 195, 0.2)' : '#F3F8F6',
+                    fontSize: '0.75rem',
+                    fontWeight: simulatedWakeUp === time ? 700 : 500,
+                    color: '#102E35',
+                    cursor: 'pointer'
+                  }}
+                >
+                  {time}
+                </button>
+              ))}
+            </div>
           </div>
 
           {/* Home Setup */}
@@ -339,14 +410,15 @@ export default function DailyRoutine({
                   onClick={() => setSimulatedPurifier(item.val)}
                   style={{
                     flex: 1,
-                    padding: '8px 10px',
+                    padding: '8px 8px',
                     borderRadius: '10px',
                     border: `1.5px solid ${simulatedPurifier === item.val ? '#8DE0C3' : '#E2ECE9'}`,
                     backgroundColor: simulatedPurifier === item.val ? 'rgba(141, 224, 195, 0.15)' : '#F3F8F6',
                     fontSize: '0.75rem',
                     fontWeight: simulatedPurifier === item.val ? 700 : 500,
                     color: '#102E35',
-                    transition: 'all 0.15s ease'
+                    transition: 'all 0.15s ease',
+                    cursor: 'pointer'
                   }}
                 >
                   {item.label}

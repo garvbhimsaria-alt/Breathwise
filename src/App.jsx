@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import Navbar from './components/Navbar';
 import DataNoticeBanner from './components/DataNoticeBanner';
 import Dashboard from './components/Dashboard';
@@ -10,11 +10,12 @@ import LocationModal from './components/LocationModal';
 import ProfileModal from './components/ProfileModal';
 import OnboardingModal from './components/OnboardingModal';
 import { SAMPLE_CITIES, INITIAL_USER_PROFILE, SCENARIO_PRESETS } from './data/mockData';
+import { generateRecommendations, classifyAqi } from './engine';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [currentCity, setCurrentCity] = useState(SAMPLE_CITIES[0]); // default Delhi NCR
-  const [activeScenarioId, setActiveScenarioId] = useState('current'); // 'current' | 'good' | 'moderate' | 'poor' | 'severe'
+  const [activeScenarioId, setActiveScenarioId] = useState('current'); // 'current' | 'good' | 'satisfactory' | 'moderate' | 'poor' | 'very_poor' | 'severe' | 'missing' | 'stale'
   
   const [userProfile, setUserProfile] = useState(() => {
     const saved = localStorage.getItem('breathewise_profile');
@@ -33,29 +34,41 @@ export default function App() {
   const [isOnboardingModalOpen, setIsOnboardingModalOpen] = useState(false);
   const [initialAiQuestion, setInitialAiQuestion] = useState(null);
 
-  // Compute effective city data synchronized across Dashboard, Daily Routine, and AI Assistant
+  // Compute active environmental parameters
   const activePreset = SCENARIO_PRESETS.find(s => s.id === activeScenarioId);
-  const effectiveCity = activePreset ? {
+  const isSimulated = activeScenarioId !== 'current';
+  
+  const rawAqi = isSimulated ? activePreset.aqi : currentCity.aqi;
+  const rawTimestamp = isSimulated && activePreset.timestamp ? activePreset.timestamp : null;
+  
+  // -------------------------------------------------------------------------
+  // CORE ENGINE INVOCATION
+  // -------------------------------------------------------------------------
+  // Runs India CPCB classification, rule evaluation, and precaution synthesis
+  const engineOutput = generateRecommendations(rawAqi, userProfile, {
+    timestamp: rawTimestamp,
+    isDemo: true,
+    location: currentCity
+  });
+
+  const aqiResult = engineOutput.aqiResult;
+
+  const effectiveCity = {
     ...currentCity,
     originalCityName: currentCity.name,
-    name: `${currentCity.name}`,
-    aqi: activePreset.aqi,
-    pm25: activePreset.pm25,
-    pm10: activePreset.pm10,
-    no2: activePreset.no2,
-    temp: activePreset.temp,
-    humidity: activePreset.humidity,
-    primaryPollutant: activePreset.primaryPollutant,
-    isScenarioSimulated: true,
-    scenarioId: activePreset.id,
-    scenarioLabel: activePreset.label,
-    scenarioDesc: activePreset.desc
-  } : {
-    ...currentCity,
-    originalCityName: currentCity.name,
-    isScenarioSimulated: false,
-    scenarioId: 'current',
-    scenarioLabel: 'Live Sample'
+    aqi: aqiResult.aqi,
+    pm25: isSimulated ? activePreset.pm25 : currentCity.pm25,
+    pm10: isSimulated ? activePreset.pm10 : currentCity.pm10,
+    no2: isSimulated ? activePreset.no2 : currentCity.no2,
+    temp: isSimulated ? activePreset.temp : currentCity.temp,
+    humidity: isSimulated ? activePreset.humidity : currentCity.humidity,
+    primaryPollutant: isSimulated ? activePreset.primaryPollutant : currentCity.primaryPollutant,
+    isScenarioSimulated: isSimulated,
+    scenarioId: isSimulated ? activePreset.id : 'current',
+    scenarioLabel: isSimulated ? activePreset.label : 'Live Sample',
+    scenarioDesc: isSimulated ? activePreset.desc : currentCity.dataSource,
+    aqiResult: aqiResult,
+    lastUpdatedText: aqiResult.lastUpdatedText
   };
 
   // Sync profile changes to localStorage
@@ -107,6 +120,7 @@ export default function App() {
           <Dashboard
             currentCity={effectiveCity}
             userProfile={userProfile}
+            engineOutput={engineOutput}
             activeScenarioId={activeScenarioId}
             onSelectScenario={setActiveScenarioId}
             onOpenLocationModal={() => setIsLocationModalOpen(true)}
@@ -119,6 +133,7 @@ export default function App() {
           <DailyRoutine
             currentCity={effectiveCity}
             userProfile={userProfile}
+            engineOutput={engineOutput}
             activeScenarioId={activeScenarioId}
             onSelectScenario={setActiveScenarioId}
             onUpdateProfile={handleSaveProfile}
@@ -129,6 +144,7 @@ export default function App() {
           <AiAssistant
             currentCity={effectiveCity}
             userProfile={userProfile}
+            engineOutput={engineOutput}
             initialQuestion={initialAiQuestion}
           />
         )}
@@ -136,12 +152,15 @@ export default function App() {
         {activeTab === 'indoor' && (
           <IndoorGuide
             currentCity={effectiveCity}
+            userProfile={userProfile}
+            engineOutput={engineOutput}
           />
         )}
 
         {activeTab === 'impact' && (
           <MyImpact
             userProfile={userProfile}
+            engineOutput={engineOutput}
           />
         )}
       </main>

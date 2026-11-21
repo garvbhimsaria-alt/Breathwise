@@ -9,7 +9,8 @@ import {
   Search,
   Sparkles
 } from 'lucide-react';
-import { SAMPLE_CITIES, getAqiCategory } from '../data/mockData';
+import { SAMPLE_CITIES } from '../data/mockData';
+import { classifyAqi } from '../engine';
 
 export default function LocationModal({ 
   isOpen, 
@@ -244,7 +245,7 @@ export default function LocationModal({
           {/* City Selection List */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
             {filteredCities.map((city) => {
-              const aqiInfo = getAqiCategory(city.aqi);
+              const aqiInfo = classifyAqi(city.aqi);
               const isSelected = currentCity?.id === city.id;
 
               return (

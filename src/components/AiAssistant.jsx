@@ -10,15 +10,25 @@ import {
   Info,
   Clock,
   ShieldCheck,
-  RotateCcw
+  RotateCcw,
+  Code,
+  ChevronDown,
+  ChevronUp,
+  Lock
 } from 'lucide-react';
-import { AI_SUGGESTED_QUESTIONS, AI_KNOWLEDGE_BASE, getAqiCategory } from '../data/mockData';
+import { AI_SUGGESTED_QUESTIONS, AI_KNOWLEDGE_BASE } from '../data/mockData';
+import { classifyAqi } from '../engine';
 
 export default function AiAssistant({ 
   currentCity, 
   userProfile, 
+  engineOutput,
   initialQuestion 
 }) {
+  const [showPayloadInspection, setShowPayloadInspection] = useState(false);
+  const aqiRes = engineOutput?.aqiResult || currentCity.aqiResult;
+  const aqiText = aqiRes?.valid ? `**${aqiRes.category}** (AQI ${aqiRes.aqi})` : `**Sensor Data Offline** (Precautionary Baseline Active)`;
+
   const [messages, setMessages] = useState([
     {
       id: 'msg-welcome',
@@ -29,9 +39,9 @@ export default function AiAssistant({
 
 I help you navigate urban smog by adapting your schedules, recommending safe exercise windows, optimizing indoor ventilation, and cutting personal emissions.
 
-Currently for **${currentCity.name}**, air quality is **${getAqiCategory(currentCity.aqi).category}** (AQI ${currentCity.aqi}).
+Currently for **${currentCity.name}**, air quality is ${aqiText}.
 
-*Demo Knowledge Mode active • Google Gemini Generative AI integration prepared for Stage 2.*`
+*Transparent Architecture Notice: Local Rule-Based Decision Engine active. Prepared for Stage 3 Google Gemini Generative AI integration without overriding safety floor boundaries.*`
     }
   ]);
 
@@ -188,7 +198,7 @@ Currently for **${currentCity.name}**, air quality is **${getAqiCategory(current
     }
 
     // 14. Intelligent Fallback for Unmatched Questions (Addresses question contextually without cookie-cutter repetition)
-    const cat = getAqiCategory(currentCity.aqi);
+    const cat = classifyAqi(currentCity.aqi);
     return {
       title: `Guidance on "${raw.length > 35 ? raw.substring(0, 32) + '...' : raw}"`,
       response: `Thank you for asking about **"${raw}"**.
@@ -534,20 +544,69 @@ Here is our targeted advice based on current conditions in **${currentCity.name}
           </button>
         </div>
 
-        {/* Prototype architecture footnote */}
+        {/* Prototype architecture footnote & Gemini Stage 3 Context Inspection Toggle */}
         <div style={{
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
           fontSize: '0.725rem',
-          color: '#6B878D'
+          color: '#6B878D',
+          flexWrap: 'wrap',
+          gap: '6px'
         }}>
           <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
             <Info size={12} color="#7E989C" />
-            Demo responses clearly labelled. Generative Gemini service hook ready for Stage 2.
+            Deterministic rule-based responses active. Structured Gemini payload prepared for Stage 3.
           </span>
-          <span>Press Enter to send</span>
+          {engineOutput?.geminiContext && (
+            <button
+              type="button"
+              onClick={() => setShowPayloadInspection(!showPayloadInspection)}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '4px',
+                background: 'none',
+                border: 'none',
+                color: '#20464A',
+                fontWeight: 700,
+                cursor: 'pointer',
+                padding: '2px 4px'
+              }}
+            >
+              <Code size={12} color="#20464A" />
+              <span>{showPayloadInspection ? 'Hide' : 'Inspect'} Stage 3 Gemini Context</span>
+              {showPayloadInspection ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+            </button>
+          )}
         </div>
+
+        {/* Collapsible Gemini Context Inspector for Hackathon Reviewers */}
+        {showPayloadInspection && engineOutput?.geminiContext && (
+          <div style={{
+            marginTop: '8px',
+            padding: '12px 14px',
+            borderRadius: '12px',
+            backgroundColor: '#102E35',
+            color: '#8DE0C3',
+            fontFamily: 'monospace',
+            fontSize: '0.75rem',
+            maxHeight: '220px',
+            overflowY: 'auto',
+            border: '1px solid #20464A'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px', color: '#FFFFFF', fontWeight: 700 }}>
+              <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <Lock size={12} color="#8DE0C3" />
+                Prepared Gemini Payload (`engineOutput.geminiContext`)
+              </span>
+              <span style={{ fontSize: '0.675rem', color: '#8DE0C3' }}>Read-only Contract</span>
+            </div>
+            <pre style={{ margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>
+              {JSON.stringify(engineOutput.geminiContext, null, 2)}
+            </pre>
+          </div>
+        )}
       </form>
     </div>
   );

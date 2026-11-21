@@ -56,7 +56,7 @@ export default function IndoorGuide({ currentCity }) {
           Indoor Air Guide — Protect Your Breathing Zone
         </h1>
         <p style={{ fontSize: '0.925rem', color: '#6B878D', marginTop: '6px', maxWidth: '820px' }}>
-          We spend up to 90% of our time indoors. Outdoor smog infiltrates living quarters, while cooking, dry dusting, and lack of airflow create hazardous localized air pockets. Here is how to achieve clean indoor air, tailored to current ambient conditions ({currentCity.name}: AQI {currentCity.aqi}).
+          We spend up to 90% of our time indoors. Outdoor smog infiltrates living quarters, while cooking, dry dusting, and lack of airflow create hazardous localized air pockets. Here is how to achieve clean indoor air, tailored to current ambient conditions ({currentCity.name}: {currentCity.aqi !== null ? `AQI ${currentCity.aqi} • ${currentCity.aqiResult?.category || 'CPCB Standard'}` : 'Sensor Offline'}).
         </p>
       </div>
 
@@ -84,10 +84,10 @@ export default function IndoorGuide({ currentCity }) {
         </div>
         <div>
           <h3 style={{ fontSize: '1.05rem', fontWeight: 800, color: '#102E35', marginBottom: '4px' }}>
-            Clean Air Should Be Accessible: Low-Cost Solutions First
+            Clean Air Should Be Accessible: Affordable Measures First
           </h3>
           <p style={{ fontSize: '0.85rem', color: '#20464A', lineHeight: 1.5 }}>
-            You do <strong>not</strong> need an expensive motorized appliance to improve your indoor air. Strategic window timing (matching diurnal solar dispersion), damp-mop cleaning, door bottom draft-guards, and DIY Corsi-Rosenthal box fans provide up to 80% of the benefits at near-zero expense.
+            You do <strong>not</strong> need an expensive motorized appliance to protect your indoor breathing zone. Strategic window sealing, wet microfiber damp-mop cleaning, and eliminating indoor combustion sources reduce particulate burdens significantly. <em>Note: While these affordable measures safely lower overall exposure, they do not provide the exact microscopic aerosol capture efficiency of a sealed mechanical HEPA purifier.</em>
           </p>
         </div>
       </div>

@@ -1,5 +1,6 @@
 // BreatheWise Mock Data & Knowledge Base
 // All data is clearly labelled as sample/demonstration data until live providers are integrated.
+export { classifyAqi as getAqiCategory } from '../engine/aqiClassifier.js';
 
 export const SAMPLE_CITIES = [
   {
@@ -106,165 +107,123 @@ export const SAMPLE_CITIES = [
   }
 ];
 
-// Standard AQI Demonstration Scenarios for testing and interactive adaptation
+// Standard AQI Demonstration Scenarios according to India's CPCB Standards
 export const SCENARIO_PRESETS = [
   {
     id: 'good',
     label: 'Good',
     aqi: 35,
     category: 'Good',
-    pm25: 8.5,
-    pm10: 18.0,
+    pm25: 15.0,
+    pm10: 28.0,
     no2: 12.0,
     temp: 22,
     humidity: 55,
     primaryPollutant: 'O3',
     color: '#10B981',
-    desc: 'Pristine Air • Unrestricted Outdoors'
+    desc: 'CPCB 0–50 • Clean Air, Unrestricted'
+  },
+  {
+    id: 'satisfactory',
+    label: 'Satisfactory',
+    aqi: 75,
+    category: 'Satisfactory',
+    pm25: 42.0,
+    pm10: 78.0,
+    no2: 25.0,
+    temp: 24,
+    humidity: 58,
+    primaryPollutant: 'PM10',
+    color: '#84CC16',
+    desc: 'CPCB 51–100 • Minor Sensitive Discomfort'
   },
   {
     id: 'moderate',
     label: 'Moderate',
-    aqi: 85,
+    aqi: 145,
     category: 'Moderate',
-    pm25: 28.5,
-    pm10: 65.0,
-    no2: 32.0,
-    temp: 24,
-    humidity: 60,
-    primaryPollutant: 'PM10',
+    pm25: 75.0,
+    pm10: 165.0,
+    no2: 44.0,
+    temp: 21,
+    humidity: 62,
+    primaryPollutant: 'PM2.5',
     color: '#F59E0B',
-    desc: 'Acceptable Air • Caution on Roads'
+    desc: 'CPCB 101–200 • Caution Near Traffic'
   },
   {
     id: 'poor',
     label: 'Poor',
-    aqi: 165,
-    category: 'Unhealthy',
-    pm25: 88.0,
-    pm10: 162.0,
-    no2: 54.0,
+    aqi: 245,
+    category: 'Poor',
+    pm25: 108.0,
+    pm10: 290.0,
+    no2: 62.0,
     temp: 18,
     humidity: 65,
     primaryPollutant: 'PM2.5',
-    color: '#EF4444',
-    desc: 'Unhealthy Smog • Shift Cardio Indoors'
+    color: '#EA580C',
+    desc: 'CPCB 201–300 • Shift Cardio Indoors'
+  },
+  {
+    id: 'very_poor',
+    label: 'Very Poor',
+    aqi: 345,
+    category: 'Very Poor',
+    pm25: 185.0,
+    pm10: 380.0,
+    no2: 72.0,
+    temp: 16,
+    humidity: 68,
+    primaryPollutant: 'PM2.5',
+    color: '#DC2626',
+    desc: 'CPCB 301–400 • N95 Mask Mandatory'
   },
   {
     id: 'severe',
     label: 'Severe',
-    aqi: 310,
-    category: 'Hazardous / Severe',
-    pm25: 265.0,
-    pm10: 420.0,
-    no2: 78.0,
-    temp: 15,
+    aqi: 440,
+    category: 'Severe',
+    pm25: 280.0,
+    pm10: 460.0,
+    no2: 85.0,
+    temp: 14,
     humidity: 72,
     primaryPollutant: 'PM2.5',
     color: '#7F1D1D',
-    desc: 'Health Alert • Strict Indoor Enclosure'
+    desc: 'CPCB 401–500 • Strict Building Seal'
+  },
+  {
+    id: 'missing',
+    label: 'Data Offline',
+    aqi: null,
+    category: 'Data Unavailable',
+    pm25: null,
+    pm10: null,
+    no2: null,
+    temp: 19,
+    humidity: 60,
+    primaryPollutant: 'Unknown',
+    color: '#6B878D',
+    desc: 'Simulate Sensor Failure / Missing Data'
+  },
+  {
+    id: 'stale',
+    label: 'Outdated Data',
+    aqi: 180,
+    category: 'Moderate',
+    pm25: 82.0,
+    pm10: 175.0,
+    no2: 45.0,
+    temp: 20,
+    humidity: 62,
+    primaryPollutant: 'PM2.5',
+    color: '#F59E0B',
+    isStale: true,
+    timestamp: new Date(Date.now() - 4 * 60 * 60 * 1000).toISOString(),
+    desc: 'Simulate Stale Reading (4 hrs old)'
   }
 ];
-
-export const getAqiCategory = (aqi) => {
-  if (aqi <= 50) {
-    return {
-      category: 'Good',
-      severity: 'safe',
-      color: '#10B981',
-      bgColor: '#ECFDF5',
-      borderColor: '#A7F3D0',
-      textColor: '#065F46',
-      badgeColor: '#10B981',
-      shortDesc: 'Air quality is satisfactory and poses little or no risk.',
-      explanation: 'Air quality is considered healthy. Ambient particulate and gas concentrations meet protective guidelines. Ideal for all outdoor recreational activities.',
-      maskRecommendation: 'No mask required for general outdoor activity.',
-      ventilationAdvice: 'Great time to open windows and let fresh outdoor air flush indoor spaces.',
-      outdoorExercise: 'Safe for intense outdoor running, cycling, and workouts.',
-      vulnerableGroupNotice: 'No special health warnings for sensitive groups.'
-    };
-  } else if (aqi <= 100) {
-    return {
-      category: 'Moderate',
-      severity: 'moderate',
-      color: '#F59E0B',
-      bgColor: '#FFFBEB',
-      borderColor: '#FDE68A',
-      textColor: '#92400E',
-      badgeColor: '#D97706',
-      shortDesc: 'Air quality is acceptable for most, but unusually sensitive people should take note.',
-      explanation: 'Acceptable ambient conditions. A small fraction of people unusually sensitive to ozone or particulate matter may experience mild throat irritation or cough.',
-      maskRecommendation: 'Not required for healthy individuals; optional for sensitive individuals on long roadside trips.',
-      ventilationAdvice: 'Safe to open windows during midday hours when wind aids air dispersion.',
-      outdoorExercise: 'General outdoor workouts are fine. Unusually sensitive individuals can monitor for symptoms.',
-      vulnerableGroupNotice: 'People with chronic asthma or COPD should have inhalers accessible.'
-    };
-  } else if (aqi <= 150) {
-    return {
-      category: 'Unhealthy for Sensitive Groups',
-      severity: 'warning',
-      color: '#EA580C',
-      bgColor: '#FFF7ED',
-      borderColor: '#FED7AA',
-      textColor: '#9A3412',
-      badgeColor: '#EA580C',
-      shortDesc: 'Children, seniors, and people with respiratory or heart conditions may experience effects.',
-      explanation: 'Vulnerable individuals face increased risk of respiratory inflammation. The general public is less likely to be noticeably affected, but heavy outdoor exertion is best moderated.',
-      maskRecommendation: 'Sensitive individuals should wear well-fitted N95 masks when outside.',
-      ventilationAdvice: 'Limit open window ventilation to 15-20 minutes in early afternoon; avoid morning rush hours.',
-      outdoorExercise: 'Children and sensitive adults should shift strenuous workouts indoors or reduce duration.',
-      vulnerableGroupNotice: 'Asthma sufferers should reduce outdoor time and watch for shortness of breath.'
-    };
-  } else if (aqi <= 200) {
-    return {
-      category: 'Unhealthy',
-      severity: 'danger',
-      color: '#EF4444',
-      bgColor: '#FEF2F2',
-      borderColor: '#FECACA',
-      textColor: '#991B1B',
-      badgeColor: '#DC2626',
-      shortDesc: 'Everyone may begin to experience health effects; sensitive groups may feel serious effects.',
-      explanation: 'Micro-pollutants penetrate deep into lung tissue. Prolonged outdoor exertion causes eye irritation, dry throat, and decreased lung function across healthy populations.',
-      maskRecommendation: 'Well-fitted N95 / FFP2 mask strongly advised for anyone spending >15 mins outdoors.',
-      ventilationAdvice: 'Keep windows and exterior doors shut. Use recirculating air filtration if available.',
-      outdoorExercise: 'Avoid outdoor cardio and running. Replace with home bodyweight exercises or indoor gym.',
-      vulnerableGroupNotice: 'High risk for seniors, young children, and respiratory patients. Remain indoors where possible.'
-    };
-  } else if (aqi <= 300) {
-    return {
-      category: 'Very Unhealthy',
-      severity: 'severe',
-      color: '#8B5CF6',
-      bgColor: '#F5F3FF',
-      borderColor: '#DDD6FE',
-      textColor: '#5B21B6',
-      badgeColor: '#7C3AED',
-      shortDesc: 'Health alert: Serious risk of health effects for the entire population.',
-      explanation: 'Severe pollution event typical of winter smog and thermal inversion layers. Ambient PM2.5 levels are dangerous. Cellular oxidative stress and respiratory inflammation accelerate rapidly.',
-      maskRecommendation: 'N95 / FFP2 mask mandatory for all outdoor exposure. Ensure a tight perimeter seal.',
-      ventilationAdvice: 'Do not open windows. Seal doorway drafts and run mechanical HEPA purification continuously.',
-      outdoorExercise: 'Strictly avoid all outdoor exercise. Even brisk walking should be minimized.',
-      vulnerableGroupNotice: 'Medical warning: High likelihood of respiratory distress triggers. Keep emergency medication ready.'
-    };
-  } else {
-    return {
-      category: 'Hazardous / Severe',
-      severity: 'emergency',
-      color: '#7F1D1D',
-      bgColor: '#FEF2F2',
-      borderColor: '#991B1B',
-      textColor: '#7F1D1D',
-      badgeColor: '#7F1D1D',
-      shortDesc: 'Health emergency: The entire population is likely to be severely affected.',
-      explanation: 'Emergency-tier ambient smog. Heavy toxic aerosol concentration. Avoid all non-essential outdoor activity.',
-      maskRecommendation: 'Tight-fitting N95 / FFP3 mask mandatory even for brief outdoor transits.',
-      ventilationAdvice: 'Complete building envelope closure. Damp cloth draft barriers recommended at door gaps.',
-      outdoorExercise: 'Zero outdoor exertion. Stay in filtered indoor enclosures.',
-      vulnerableGroupNotice: 'Absolute health alert for sensitive demographics. Minimize physical exertion.'
-    };
-  }
-};
 
 // Default User Profile for personalization
 export const INITIAL_USER_PROFILE = {
@@ -279,394 +238,9 @@ export const INITIAL_USER_PROFILE = {
   hasAirPurifier: true, // true, false, 'unsure'
   hasAc: true,
   healthSensitivity: 'mild_asthma', // 'none', 'mild_asthma', 'sensitive_throat', 'senior_household', 'child_at_home'
+  wakeUpTime: '06:30',
+  sleepTime: '22:30',
   hasCompletedOnboarding: true
-};
-
-// Generates dynamic daily schedule timeline tailored to 4 distinct AQI scenarios & user profile
-export const generatePersonalizedRoutine = (profile, currentAqi) => {
-  // Determine 4 distinct tiers: Good, Moderate, Poor, Severe
-  let tier = 'good';
-  if (currentAqi > 200) {
-    tier = 'severe';
-  } else if (currentAqi > 100) {
-    tier = 'poor';
-  } else if (currentAqi > 50) {
-    tier = 'moderate';
-  } else {
-    tier = 'good';
-  }
-
-  const hasPurifier = profile.hasAirPurifier === true;
-  const isMorningExerciser = profile.exerciseHabit === 'morning_runner' || profile.exerciseHabit === 'walking';
-  const isWfh = profile.lifestyle === 'wfh';
-  const isStudent = profile.lifestyle === 'student';
-
-  // -------------------------------------------------------------
-  // STEP 1: Morning Exercise / Early Habit Adaptation
-  // -------------------------------------------------------------
-  let step1 = {};
-  if (tier === 'good') {
-    step1 = {
-      id: 'step-1',
-      time: '06:15 AM – 07:30 AM',
-      title: profile.exerciseHabit === 'none' ? 'Morning Outdoor Refresh Walk' : 'Unrestricted Outdoor Running / Cycling',
-      category: 'Exercise & Wellness',
-      badge: 'Optimal Window',
-      badgeType: 'success',
-      icon: 'Activity',
-      originalHabit: isMorningExerciser ? 'Outdoor running in local park' : 'Morning wake-up routine',
-      recommendation: 'Take full advantage of clean morning conditions for outdoor running, cycling, or brisk park walks. No protective mask required.',
-      reasoning: 'Atmospheric particulate levels are within clean WHO guidelines. Morning solar convection and night settling have cleared surface aerosols.',
-      practicalAlternative: 'If exercising indoors, keep windows wide open for natural fresh air exchange.',
-      expectedBenefit: 'Maximizes lung vital capacity and cardiovascular conditioning with zero pulmonary particulate burden.'
-    };
-  } else if (tier === 'moderate') {
-    step1 = {
-      id: 'step-1',
-      time: '07:00 AM – 08:00 AM',
-      title: profile.exerciseHabit === 'none' ? 'Park Walk on Interior Trails' : 'Outdoor Cardio with Route Caution',
-      category: 'Exercise & Wellness',
-      badge: 'Caution Near Roads',
-      badgeType: 'info',
-      icon: 'Activity',
-      originalHabit: isMorningExerciser ? 'Outdoor running near neighborhood roads' : 'Morning stroll',
-      recommendation: 'Outdoor exercise is safe for most healthy adults. Choose green parks or interior residential loops, staying away from arterial commuter corridors.',
-      reasoning: 'Regional air is acceptable, but early morning traffic creates localized plumes of coarse dust and diesel particulates near multi-lane roads.',
-      practicalAlternative: profile.healthSensitivity !== 'none'
-        ? 'Since your profile flags respiratory sensitivity, reduce high-intensity duration by 20% or switch to an indoor workout.'
-        : 'If vehicle exhaust is noticeable along your route, shift to an indoor bodyweight circuit.',
-      expectedBenefit: 'Maintains daily cardiovascular fitness while avoiding direct contact with roadside vehicle emissions.'
-    };
-  } else if (tier === 'poor') {
-    step1 = {
-      id: 'step-1',
-      time: '07:15 AM – 08:00 AM',
-      title: 'Adapted Indoor Cardio & Mobility (Replacing Outdoor Run)',
-      category: 'Exercise & Wellness',
-      badge: 'Smog Alert: Move Indoors',
-      badgeType: 'warning',
-      icon: 'Activity',
-      originalHabit: isMorningExerciser ? 'Morning outdoor run in neighborhood' : 'Morning walk / commute',
-      recommendation: 'Shift strenuous aerobic exercise indoors. Replace outdoor jogging with home bodyweight intervals, treadmill, or yoga with windows closed.',
-      reasoning: 'Winter thermal inversion traps cold particulate-dense air near ground level. Heavy outdoor breathing increases minute ventilation tenfold, depositing micro-PM2.5 deep into alveoli.',
-      practicalAlternative: 'Follow a 35-minute indoor HIIT, core, or resistance band session. If using a gym, verify mechanical filtration is operating.',
-      expectedBenefit: 'Avoids inhaling elevated micro-particulates during the morning peak while keeping physical training on schedule.'
-    };
-  } else {
-    // severe
-    step1 = {
-      id: 'step-1',
-      time: '07:30 AM – 08:15 AM',
-      title: 'Low-Exertion Indoor Restorative Routine (Zero Outdoor Exertion)',
-      category: 'Exercise & Wellness',
-      badge: 'Hazard Alert: Zero Outdoor Exertion',
-      badgeType: 'alert',
-      icon: 'Activity',
-      originalHabit: isMorningExerciser ? 'Outdoor running / sports' : 'Morning outdoor activity',
-      recommendation: 'Strictly cancel all outdoor exercise and heavy breathing. Complete only gentle indoor stretching, mobility, or restorative yoga in a sealed room.',
-      reasoning: 'Severe smog conditions cause acute oxidative stress, rapid airway inflammation, and vascular irritation even during light outdoor walking.',
-      practicalAlternative: 'Gentle indoor yoga, foam rolling, and deliberate breathing within a room with door drafts sealed and air filtration running.',
-      expectedBenefit: 'Protects cardiac and respiratory pathways from hazardous toxic aerosols during the day’s peak inversion window.'
-    };
-  }
-
-  // -------------------------------------------------------------
-  // STEP 2: Commute & Daily Travel Strategy
-  // -------------------------------------------------------------
-  let step2 = {};
-  if (tier === 'good') {
-    step2 = {
-      id: 'step-2',
-      time: '08:30 AM – 09:30 AM',
-      title: isWfh ? 'Morning Work Transition' : 'Active & Low-Emission Commute Window',
-      category: 'Commute',
-      badge: 'Unrestricted Travel',
-      badgeType: 'success',
-      icon: 'Compass',
-      originalHabit: `Standard ${profile.commuteType || 'transit'} commute (${profile.commuteDistanceKm || 10} km)`,
-      recommendation: isWfh
-        ? 'Air out your home office workspace with open windows before beginning morning focus work.'
-        : (profile.commuteType === 'walking' || profile.commuteType === 'bike'
-            ? `Ideal conditions for walking or cycling your ${profile.commuteDistanceKm || 10} km route. No mask required.`
-            : `Safe and pleasant commute via ${profile.commuteType}. Open vehicle windows are safe.`),
-      reasoning: 'Atmospheric particulate dispersion is active and traffic plumes dilute quickly into clear ambient air.',
-      practicalAlternative: 'Consider walking or cycling part of your commute for daily active movement.',
-      expectedBenefit: 'Zero smog inhalation risk while supporting personal physical health and low-carbon urban transit.'
-    };
-  } else if (tier === 'moderate') {
-    step2 = {
-      id: 'step-2',
-      time: '08:30 AM – 09:30 AM',
-      title: isWfh ? 'Desk Setup & Gentle Airflow' : 'Standard Commute with Roadside Awareness',
-      category: 'Commute',
-      badge: 'Roadside Awareness',
-      badgeType: 'info',
-      icon: 'Compass',
-      originalHabit: `Standard ${profile.commuteType || 'transit'} commute (${profile.commuteDistanceKm || 10} km)`,
-      recommendation: isWfh
-        ? 'Work in a well-ventilated room with open courtyard windows.'
-        : (profile.commuteType === 'walking' || profile.commuteType === 'bike'
-            ? 'Choose residential side streets and protected cycle paths rather than following busy diesel bus corridors.'
-            : 'If driving or cabbing, keep windows closed in stop-and-go jams; on public transit, standard hygiene is sufficient.'),
-      reasoning: 'Roadside intersections experience localized accumulation of diesel exhaust particles (DPM) and nitrogen dioxide during peak rush hour.',
-      practicalAlternative: 'Have an N95 mask accessible if you encounter unpaved detours, open construction, or high congestion.',
-      expectedBenefit: 'Avoids concentrated roadside exhaust clouds without requiring drastic schedule disruptions.'
-    };
-  } else if (tier === 'poor') {
-    step2 = {
-      id: 'step-2',
-      time: '08:15 AM – 09:15 AM',
-      title: isWfh ? 'Home Office Air Shielding' : 'Shielded Transit & N95 Protection',
-      category: 'Commute',
-      badge: 'N95 Mask Required',
-      badgeType: 'warning',
-      icon: 'Compass',
-      originalHabit: `Standard ${profile.commuteType || 'transit'} commute (${profile.commuteDistanceKm || 10} km)`,
-      recommendation: isWfh
-        ? 'Keep street-facing windows shut during rush hour. Run a localized air cleaner in your study.'
-        : (profile.commuteType === 'walking' || profile.commuteType === 'bike'
-            ? 'Switch from walking/cycling to closed-cabin public transit (Metro or AC bus) wearing a certified N95 mask.'
-            : 'In car/cab: Toggle Cabin Air Recirculation ON. On public transit: Wear a well-fitted N95 mask throughout platforms.'),
-      reasoning: 'Rush hour traffic generates concentrated plumes of soot, fine dust, and nitrogen oxides trapped near breathing level by thermal inversion.',
-      practicalAlternative: 'In vehicles, keeping AC on internal recirculation cuts particulate intrusion by 75% to 90% compared to fresh air intake.',
-      expectedBenefit: 'Dramatically reduces acute exposure to roadside carcinogens and toxic combustion byproducts.'
-    };
-  } else {
-    // severe
-    step2 = {
-      id: 'step-2',
-      time: '08:00 AM – 09:30 AM',
-      title: isWfh ? 'High-Protection Remote Work Day' : 'Emergency Sealed Travel Strategy',
-      category: 'Commute',
-      badge: 'Emergency Sealed Transit',
-      badgeType: 'alert',
-      icon: 'Compass',
-      originalHabit: `Standard ${profile.commuteType || 'transit'} commute (${profile.commuteDistanceKm || 10} km)`,
-      recommendation: isWfh
-        ? 'Remain entirely indoors in your designated clean room. Run continuous air cleaning.'
-        : (isStudent
-            ? 'If campus classes cannot be attended remotely, travel strictly point-to-point via Metro with a tightly sealed N95/FFP3 mask.'
-            : 'Minimize all outdoor exposure. Avoid open two-wheelers or walking. Strictly use underground Metro or closed vehicles with AC Recirculation and N95 masks.'),
-      reasoning: 'Severe ambient smog causes burning eyes, throat constriction, and microvascular stress within 10 minutes of unprotected roadside exposure.',
-      practicalAlternative: profile.lifestyle === 'working_professional'
-        ? 'Request flexible remote hours to avoid peak morning ground smog; otherwise travel directly without roadside stops.'
-        : 'Postpone non-essential travel until afternoon convection temporarily dilutes surface air.',
-      expectedBenefit: 'Prevents severe acute pollutant dosing during the most hazardous commuting hours of the day.'
-    };
-  }
-
-  // -------------------------------------------------------------
-  // STEP 3: Midday Ventilation & Workspace Environment
-  // -------------------------------------------------------------
-  let step3 = {};
-  if (tier === 'good') {
-    step3 = {
-      id: 'step-3',
-      time: '10:00 AM – 02:30 PM',
-      title: 'Full Natural Home & Workspace Air Exchange',
-      category: 'Indoor Air Quality',
-      badge: 'Full Open Air Flush',
-      badgeType: 'success',
-      icon: 'Wind',
-      originalHabit: 'Keeping windows closed or unmanaged',
-      recommendation: 'Open opposite windows and balcony doors wide. Allow natural cross-ventilation to thoroughly flush indoor air.',
-      reasoning: 'Outdoor air is pristine. Natural airflow expels accumulated indoor carbon dioxide, cooking moisture, and VOCs without introducing exterior contaminants.',
-      practicalAlternative: 'Keep windows cracked throughout the workday for continuous oxygen replenishment.',
-      expectedBenefit: 'Lowers indoor CO2 below 500 ppm, preventing midday brain fog, headaches, and lethargy.'
-    };
-  } else if (tier === 'moderate') {
-    step3 = {
-      id: 'step-3',
-      time: '11:30 AM – 01:30 PM',
-      title: 'Controlled Midday Ventilation Window',
-      category: 'Indoor Air Quality',
-      badge: 'Controlled Flush (45m)',
-      badgeType: 'info',
-      icon: 'Wind',
-      originalHabit: 'Keeping windows shut or opening indiscriminately',
-      recommendation: 'Open windows for 30–45 minutes during midday solar peak, preferably on courtyard or non-street-facing sides.',
-      reasoning: 'Thermal convection breaks morning surface stagnation, making late morning to early afternoon the cleanest atmospheric window of the day.',
-      practicalAlternative: 'If outside traffic is audible or dust is visible, limit opening to non-street windows.',
-      expectedBenefit: 'Refreshes stale indoor oxygen levels while keeping roadside dust intake to a minimum.'
-    };
-  } else if (tier === 'poor') {
-    step3 = {
-      id: 'step-3',
-      time: '01:30 PM – 02:00 PM',
-      title: 'Strict 15-Minute Strategic Cross-Ventilation',
-      category: 'Indoor Air Quality',
-      badge: 'Restricted Window (15m)',
-      badgeType: 'warning',
-      icon: 'Wind',
-      originalHabit: 'Keeping windows shut all day',
-      recommendation: 'Limit window opening to a quick 15-minute cross-draft at 1:30 PM on non-roadside windows, then immediately reseal.',
-      reasoning: 'Solar radiation temporarily dilutes ground-level PM2.5 between 1 PM and 2 PM. This is your only safe window to flush trapped CO2 before evening stagnation.',
-      practicalAlternative: hasPurifier
-        ? 'Open windows for 15 minutes to flush CO2, then close and run air purifier on High/Turbo for 20 minutes.'
-        : 'Keep interior bedroom doors open to circulate air without pulling exterior roadside dust.',
-      expectedBenefit: 'Clears cognitive-draining indoor CO2 buildup without trapping high volumes of ambient smog.'
-    };
-  } else {
-    // severe
-    step3 = {
-      id: 'step-3',
-      time: 'All-Day Midday Protocol',
-      title: 'Zero Exterior Window Opening — Complete Building Envelope Seal',
-      category: 'Indoor Air Quality',
-      badge: 'Windows Sealed',
-      badgeType: 'alert',
-      icon: 'Wind',
-      originalHabit: 'Opening windows for air',
-      recommendation: 'Keep all exterior windows and doors firmly shut throughout the day. Do not open windows.',
-      reasoning: 'Outdoor PM2.5 is at hazardous emergency levels. Opening windows for even 5 minutes will saturate indoor rooms with fine soot that settles onto fabrics.',
-      practicalAlternative: hasPurifier
-        ? 'Run HEPA air purifiers continuously on auto/medium mode. Use interior ceiling fans for circulation.'
-        : 'Use DIY Corsi-Rosenthal box fans and seal door gaps with draft stoppers or damp towels.',
-      expectedBenefit: 'Maintains indoor PM2.5 levels at 60% to 80% below the hazardous exterior smog.'
-    };
-  }
-
-  // -------------------------------------------------------------
-  // STEP 4: Evening Transition & Decontamination
-  // -------------------------------------------------------------
-  let step4 = {};
-  if (tier === 'good') {
-    step4 = {
-      id: 'step-4',
-      time: '05:30 PM – 07:00 PM',
-      title: 'Evening Leisure & Outdoor Unwind',
-      category: 'Home Transition',
-      badge: 'Pleasant Evening',
-      badgeType: 'success',
-      icon: 'ShieldCheck',
-      originalHabit: 'Returning indoors directly',
-      recommendation: 'Enjoy an evening walk, outdoor sports, or park relaxation. No special decontamination needed upon arriving home.',
-      reasoning: 'Evening ambient conditions remain clean with active atmospheric mixing.',
-      practicalAlternative: 'Standard handwashing upon entering.',
-      expectedBenefit: 'Supports physical relaxation and mental recovery after work or study.'
-    };
-  } else if (tier === 'moderate') {
-    step4 = {
-      id: 'step-4',
-      time: '06:00 PM – 07:00 PM',
-      title: 'Evening Return & Light Shoe Care',
-      category: 'Home Transition',
-      badge: 'Basic Hygiene',
-      badgeType: 'info',
-      icon: 'ShieldCheck',
-      originalHabit: 'Walking straight into living space',
-      recommendation: 'Leave street shoes at the entryway and wash hands and face. Evening outdoor walks are fine in parks away from main roads.',
-      reasoning: 'Evening rush hour increases local street-level dust, but residential neighborhoods remain acceptable.',
-      practicalAlternative: 'Wipe down door entrance with a damp cloth every couple of days.',
-      expectedBenefit: 'Prevents tracked road dust from spreading onto living room floors.'
-    };
-  } else if (tier === 'poor') {
-    step4 = {
-      id: 'step-4',
-      time: '06:00 PM – 07:00 PM',
-      title: 'Entryway Decontamination Protocol',
-      category: 'Home Transition',
-      badge: 'Decontamination',
-      badgeType: 'warning',
-      icon: 'ShieldCheck',
-      originalHabit: 'Entering living space in outdoor clothing',
-      recommendation: 'Remove outdoor shoes immediately at the door, change out of outdoor jackets, and wash face and eyes promptly.',
-      reasoning: 'Winter particulate matter and tire soot cling to clothing, hair, and footwear during evening traffic.',
-      practicalAlternative: 'Damp-mop entryway tiles instead of dry sweeping to capture settled dust without resuspending it into the breathing zone.',
-      expectedBenefit: 'Stops outdoor toxic aerosols from contaminating your living room and sleeping quarters.'
-    };
-  } else {
-    // severe
-    step4 = {
-      id: 'step-4',
-      time: '05:45 PM – 07:00 PM',
-      title: 'Strict Smog Decontamination & Airway Flush',
-      category: 'Home Transition',
-      badge: 'Hazard Decontamination',
-      badgeType: 'alert',
-      icon: 'ShieldCheck',
-      originalHabit: 'Casual entry in street clothes',
-      recommendation: 'Immediately strip outdoor outerwear at entrance, wash face, rinse eyes and gargle with warm water/saline. Take a shower if outdoors >30 mins.',
-      reasoning: 'Severe smog deposits heavy polycyclic aromatic hydrocarbons and acidic aerosols on hair, skin, and clothing.',
-      practicalAlternative: 'Store outerwear in a closed closet or laundry hamper by the door. Damp-wipe all floor transitions.',
-      expectedBenefit: 'Reduces mucous membrane inflammation, eye stinging, and nighttime allergen triggers.'
-    };
-  }
-
-  // -------------------------------------------------------------
-  // STEP 5: Nighttime Rest & Sleep Sanctuary Setup
-  // -------------------------------------------------------------
-  let step5 = {};
-  if (tier === 'good') {
-    step5 = {
-      id: 'step-5',
-      time: '09:30 PM – 10:30 PM',
-      title: 'Natural Nighttime Sleep Airflow',
-      category: 'Rest & Recovery',
-      badge: 'Natural Fresh Air',
-      badgeType: 'success',
-      icon: 'Moon',
-      originalHabit: 'Sleeping with closed windows',
-      recommendation: 'Bedroom windows can remain cracked for fresh, cool air circulation during sleep.',
-      reasoning: 'Nighttime ambient conditions are clean and cool, promoting natural melatonin release and lung recovery.',
-      practicalAlternative: 'If outdoor noise is noticeable, close windows and use normal room fan.',
-      expectedBenefit: 'Prevents CO2 accumulation and delivers deep, restorative sleep.'
-    };
-  } else if (tier === 'moderate') {
-    step5 = {
-      id: 'step-5',
-      time: '09:30 PM – 10:30 PM',
-      title: 'Bedroom Wind-Down & Protected Rest',
-      category: 'Rest & Recovery',
-      badge: 'Protected Rest',
-      badgeType: 'info',
-      icon: 'Moon',
-      originalHabit: 'Sleeping without checking windows',
-      recommendation: 'Close street-facing windows before sleep. Keep bedroom door slightly ajar to balance indoor airflow.',
-      reasoning: 'Nighttime cooling causes surface air to settle, slowly increasing localized road exhaust concentrations.',
-      practicalAlternative: hasPurifier
-        ? 'Run air purifier on silent/sleep mode.'
-        : 'Ensure windows are shut and clean sheets are free of outdoor dust.',
-      expectedBenefit: 'Ensures undisturbed 7–8 hours of restful sleep without coughing or dry throat.'
-    };
-  } else if (tier === 'poor') {
-    step5 = {
-      id: 'step-5',
-      time: '09:30 PM – 10:30 PM',
-      title: 'Sealed Bedroom & Air Purifier Optimization',
-      category: 'Rest & Recovery',
-      badge: 'Purifier Mode',
-      badgeType: 'warning',
-      icon: 'Moon',
-      originalHabit: 'Sleeping with unmanaged room air',
-      recommendation: 'Ensure bedroom windows are firmly closed. Place air purifier 3 feet from bed in sleep mode.',
-      reasoning: 'Nighttime thermal stagnation locks pollutants in place until morning sun. Sleeping in unmanaged air causes morning nasal congestion.',
-      practicalAlternative: hasPurifier
-        ? 'Run purifier on sleep mode with door slightly ajar for CO2 balance.'
-        : 'Place a rolled damp towel along the bottom door gap to block smog drafts.',
-      expectedBenefit: 'Provides overnight respiratory recovery, preventing waking with throat irritation or sinus headaches.'
-    };
-  } else {
-    // severe
-    step5 = {
-      id: 'step-5',
-      time: '09:15 PM – 10:30 PM',
-      title: 'High-Integrity Sleep Sanctuary Enclosure',
-      category: 'Rest & Recovery',
-      badge: 'Critical Sleep Shield',
-      badgeType: 'alert',
-      icon: 'Moon',
-      originalHabit: 'Sleeping with standard drafts',
-      recommendation: 'Complete bedroom seal. Place air purifier on continuous medium/high mode 45 mins before bedtime, then switch to quiet night mode.',
-      reasoning: 'Dangerous nocturnal smog levels penetrate loose window gaskets. Breathing severe smog during sleep causes nocturnal bronchospasms and microvascular stress.',
-      practicalAlternative: hasPurifier
-        ? 'Position purifier directly in the breathing zone path. Ensure zero drafts.'
-        : 'Tape window seams with masking tape and place damp towels at all door gaps. Use DIY Corsi-Rosenthal unit if available.',
-      expectedBenefit: 'Creates a safe micro-environment where lung tissue can recover from daytime toxic aerosol exposures.'
-    };
-  }
-
-  return [step1, step2, step3, step4, step5];
 };
 
 // AI Assistant Knowledge Base for Instant Intelligent Demo Responses
@@ -682,11 +256,11 @@ export const AI_KNOWLEDGE_BASE = {
   // Conversational Intent: Greetings
   greeting: {
     title: 'Welcome to BreatheWise',
-    response: (name, city, aqi) => `Hello ${name || 'there'}! Great to meet you.
+    response: (name, city, aqi, aqiCategory) => `Hello ${name || 'there'}! Great to meet you.
 
 I am **BreatheWise**, your personal AI-powered air-quality and daily routine companion. I help you navigate urban smog by adapting your schedules, recommending safe exercise windows, optimizing indoor ventilation, and cutting personal emissions.
 
-Currently for **${city?.name || 'your area'}**, the air quality is **${getAqiCategory(aqi).category}** (AQI ${aqi}).
+Currently for **${city?.name || 'your area'}**, the air quality is ${aqi ? `**${aqiCategory || 'monitored'}** (AQI ${aqi})` : '**currently unavailable (data offline)**'}.
 
 How can I help you today? You can choose one of the suggested prompts above or ask about workouts, masks, or ventilation!`
   },
@@ -720,13 +294,13 @@ Before heading out, be sure to check the **Daily Routine** tab for hour-by-hour 
 4. **Commuter Defense:** Specific protection strategies for cars (AC recirculation), metro transit, two-wheelers, and certified N95 mask usage.
 5. **Sustainable Impact:** Tracks and estimates your personal avoided carbon and particulate emissions.
 
-*(Note: Currently running in prototype demo mode. Full conversational reasoning with live sensor streaming will be powered by Google Gemini in Stage 2!)*`
+*(Note: Currently running in prototype demo mode. Full conversational reasoning with live sensor streaming will be powered by Google Gemini in Stage 3!)*`
   },
 
   // Suggested Prompt 1: Plan Day High AQI
   plan_day_high_aqi: {
     title: 'Comprehensive Daily Smog Blueprint',
-    response: (name, city, aqi) => `When ambient AQI is elevated (above 150), daily personal exposure can be halved by planning around atmospheric cycles:
+    response: () => `When ambient AQI is elevated (Poor, Very Poor, or Severe), daily personal exposure can be halved by planning around atmospheric cycles:
 
 1. **Morning Inversion Caution (6:00 AM – 9:00 AM):**
    Cold surface air traps vehicular and biomass exhaust near breathing height. Postpone morning outdoor runs, and keep bedroom windows sealed.
@@ -749,18 +323,22 @@ Before heading out, be sure to check the **Daily Routine** tab for hour-by-hour 
   // Suggested Prompt 2: Exercise Safety
   exercise_safety: {
     title: 'Outdoor Exercise Safety & Health Protocols',
-    response: (name, city, aqi) => {
-      const cat = getAqiCategory(aqi);
-      return `Here is your exercise safety assessment for **${city?.name || 'your location'}** (Current AQI: **${aqi}** — *${cat.category}*):
+    response: (name, city, aqi, aqiCategory) => {
+      const aqiNum = Number(aqi);
+      return `Here is your exercise safety assessment for **${city?.name || 'your location'}** (${aqi ? `Current AQI: **${aqi}** — *${aqiCategory}*` : 'Air quality data is currently offline'}):
 
 **Direct Recommendation:**
-${aqi <= 50 
-  ? '✅ **Fully Safe for Outdoor Exercise.** Air quality is healthy. Enjoy outdoor running, cycling, or field sports without restriction.'
-  : aqi <= 100
-  ? '⚠️ **Outdoor Exercise Allowed with Route Caution.** Safe for healthy adults. Pick interior park paths away from busy traffic arteries. Sensitive individuals should monitor for throat irritation.'
-  : aqi <= 200
-  ? '🛑 **Shift Strenuous Cardio Indoors.** Heavy outdoor running or cycling is not advised. During vigorous exercise, your minute ventilation jumps 10x to 20x, forcing PM2.5 deep into pulmonary alveoli where it cannot be coughed out.'
-  : '🚨 **Strictly Cancel All Outdoor Exertion.** Hazardous smog levels. Even light walking outdoors triggers rapid airway inflammation. Limit movement to gentle indoor stretching in a sealed room.'}
+${!aqi || Number.isNaN(aqiNum)
+  ? '⚠️ **Precautionary Indoor Exercise Recommended.** Sensor data is offline. Since unmonitored winter morning smog often traps cold surface soot, indoor workouts are the safest choice.'
+  : aqiNum <= 50 
+  ? '✅ **Fully Safe for Outdoor Exercise.** Air quality is Good. Enjoy outdoor running, cycling, or field sports without restriction.'
+  : aqiNum <= 100
+  ? '✅ **Outdoor Exercise Allowed (Satisfactory Air).** Safe for healthy adults. Sensitive individuals can monitor for minor throat tickles.'
+  : aqiNum <= 200
+  ? '⚠️ **Outdoor Exercise Allowed with Route Caution.** Safe in green parks away from busy traffic arteries. Asthmatics and sensitive groups should moderate intensity by 20%.'
+  : aqiNum <= 300
+  ? '🛑 **Shift Strenuous Cardio Indoors (Poor Air).** Heavy outdoor running or cycling is not advised. During vigorous exercise, your minute ventilation jumps 10x to 20x, forcing PM2.5 deep into pulmonary alveoli where it cannot be coughed out.'
+  : '🚨 **Strictly Cancel All Outdoor Exertion (Very Poor / Severe).** Hazardous smog levels. Even light walking outdoors triggers rapid airway inflammation. Limit movement to gentle indoor stretching in a sealed room.'}
 
 **Safe Indoor Alternatives for Elevated Smog Days:**
 - 30-minute living room bodyweight circuit (squats, pushups, core intervals)
@@ -809,7 +387,7 @@ ${aqi <= 50
     response: () => `While industrial policy is essential, individual transport and consumption choices directly shape neighborhood air quality:
 
 1. **Shift One Weekly Commute to Public Transit:**
-   Taking the metro or bus instead of driving a private petrol car avoids roughly **110 grams of CO2 and crucial grams of NOx/PM per kilometer**. Check the **My Impact** tab to calculate your savings!
+   Taking the metro or bus instead of driving a private petrol car avoids roughly **108 grams of CO2 and crucial grams of NOx/PM per kilometer**. Check the **My Impact** tab to calculate your savings!
 
 2. **Eliminate Open Biomass & Leaf Burning:**
    Never burn dry leaves or domestic trash. A single leaf pile fire releases dense polycyclic aromatic hydrocarbons (PAHs) that linger in neighborhood air for hours.
@@ -947,16 +525,6 @@ export const INDOOR_GUIDE_CARDS = [
 ];
 
 // Sustainable Impact Factors & Preset Journeys
-export const IMPACT_BENCHMARKS = {
-  carEmissionGPerKm: 140, // Average single-occupancy petrol vehicle: ~140g CO2/km
-  metroEmissionGPerKm: 32, // Average urban electric metro per passenger-km: ~32g CO2/km
-  busEmissionGPerKm: 68,   // Average municipal CNG/diesel bus per passenger-km: ~68g CO2/km
-  carpoolEmissionGPerKm: 70, // 2-person carpool: ~70g CO2/km
-  zeroEmissionGPerKm: 0,   // Walking or Cycling: 0g CO2/km
-
-  pmAvoidedGPerKmCarVsMetro: 0.028 // Defensible estimated grams of PM2.5/PM10 avoided per km shifted
-};
-
 export const INITIAL_IMPACT_LOGS = [
   {
     id: 'log-1',
@@ -965,7 +533,7 @@ export const INITIAL_IMPACT_LOGS = [
     modeName: 'Metro Transit',
     distanceKm: 14,
     co2SavedKg: 1.51,
-    pmSavedG: 0.39,
+    pmSavedG: 0.36,
     notes: 'Morning & evening commute via Line 2'
   },
   {
@@ -975,7 +543,7 @@ export const INITIAL_IMPACT_LOGS = [
     modeName: 'Carpooling',
     distanceKm: 12,
     co2SavedKg: 0.84,
-    pmSavedG: 0.22,
+    pmSavedG: 0.17,
     notes: 'Shared ride with 2 colleagues'
   },
   {
