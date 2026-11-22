@@ -1,10 +1,12 @@
 import React, { useState } from 'react';
-import { Info, X, Sparkles, Database } from 'lucide-react';
+import { Info, X, Sparkles, Database, Radio } from 'lucide-react';
 
-export default function DataNoticeBanner({ onOpenAi }) {
+export default function DataNoticeBanner({ currentCity, onOpenAi }) {
   const [dismissed, setDismissed] = useState(false);
 
   if (dismissed) return null;
+
+  const isLive = currentCity?.isLiveData;
 
   return (
     <div style={{
@@ -19,25 +21,51 @@ export default function DataNoticeBanner({ onOpenAi }) {
       gap: '12px'
     }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-        <span style={{
-          backgroundColor: '#8DE0C3',
-          color: '#102E35',
-          fontWeight: 700,
-          fontSize: '0.7rem',
-          padding: '2px 8px',
-          borderRadius: '9999px',
-          textTransform: 'uppercase',
-          letterSpacing: '0.04em',
-          display: 'inline-flex',
-          alignItems: 'center',
-          gap: '4px'
-        }}>
-          <Database size={12} />
-          Prototype Demo Mode
-        </span>
-        <span style={{ color: '#E2ECE9' }}>
-          Air quality and routine recommendations are powered by our <strong>deterministic CPCB decision engine</strong> using clearly labeled demonstration scenarios.
-        </span>
+        {isLive ? (
+          <>
+            <span style={{
+              backgroundColor: '#10B981',
+              color: '#FFFFFF',
+              fontWeight: 700,
+              fontSize: '0.7rem',
+              padding: '2px 8px',
+              borderRadius: '9999px',
+              textTransform: 'uppercase',
+              letterSpacing: '0.04em',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '4px'
+            }}>
+              <Radio size={12} />
+              Live Station Active
+            </span>
+            <span style={{ color: '#E2ECE9' }}>
+              Connected to <strong>{currentCity.liveStation || currentCity.name}</strong> via {currentCity.dataSource || 'Air Monitoring Net'}. Recommendations evaluate actual telemetry with CPCB rule safety boundaries.
+            </span>
+          </>
+        ) : (
+          <>
+            <span style={{
+              backgroundColor: '#8DE0C3',
+              color: '#102E35',
+              fontWeight: 700,
+              fontSize: '0.7rem',
+              padding: '2px 8px',
+              borderRadius: '9999px',
+              textTransform: 'uppercase',
+              letterSpacing: '0.04em',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '4px'
+            }}>
+              <Database size={12} />
+              Demonstration Mode
+            </span>
+            <span style={{ color: '#E2ECE9' }}>
+              Air quality and routine recommendations are powered by our <strong>deterministic CPCB decision engine</strong> using clearly labeled demonstration scenarios.
+            </span>
+          </>
+        )}
       </div>
 
       <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>

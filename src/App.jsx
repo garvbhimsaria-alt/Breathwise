@@ -11,11 +11,12 @@ import ProfileModal from './components/ProfileModal';
 import OnboardingModal from './components/OnboardingModal';
 import { SAMPLE_CITIES, INITIAL_USER_PROFILE, SCENARIO_PRESETS } from './data/mockData';
 import { generateRecommendations, classifyAqi } from './engine';
+import { useLiveAqi } from './hooks/useLiveAqi';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [currentCity, setCurrentCity] = useState(SAMPLE_CITIES[0]); // default Delhi NCR
-  const [activeScenarioId, setActiveScenarioId] = useState('current'); // 'current' | 'good' | 'satisfactory' | 'moderate' | 'poor' | 'very_poor' | 'severe' | 'missing' | 'stale'
+  const [activeScenarioId, setActiveScenarioId] = useState('current');
   
   const [userProfile, setUserProfile] = useState(() => {
     const saved = localStorage.getItem('breathewise_profile');
@@ -34,41 +35,70 @@ export default function App() {
   const [isOnboardingModalOpen, setIsOnboardingModalOpen] = useState(false);
   const [initialAiQuestion, setInitialAiQuestion] = useState(null);
 
-  // Compute active environmental parameters
+  // ─── Live Data Hook ───────────────────────────────────────────
+  // Attempts to fetch real air quality data from the backend.
+  // Falls back to demonstration mode when backend is unreachable.
+  const {
+    liveCity,
+    dataMode,
+    backendStatus,
+    lastFetchError,
+    refreshLiveData
+  } = useLiveAqi(currentCity);
+
+  // ─── Determine effective data source ──────────────────────────
+  // When a scenario preset is active, always use that preset (simulation).
+  // When 'current' is selected:
+  //   - If live data is available → use live data
+  //   - Otherwise → use demo city data
   const activePreset = SCENARIO_PRESETS.find(s => s.id === activeScenarioId);
   const isSimulated = activeScenarioId !== 'current';
-  
-  const rawAqi = isSimulated ? activePreset.aqi : currentCity.aqi;
+
+  // The "base city" for the 'current' scenario:
+  // live data when available, demo data otherwise
+  const baseCity = (dataMode === 'live' && liveCity) ? liveCity : currentCity;
+  const isLiveActive = dataMode === 'live' && liveCity && !isSimulated;
+
+  const rawAqi = isSimulated ? activePreset.aqi : baseCity.aqi;
   const rawTimestamp = isSimulated && activePreset.timestamp ? activePreset.timestamp : null;
   
-  // -------------------------------------------------------------------------
-  // CORE ENGINE INVOCATION
-  // -------------------------------------------------------------------------
-  // Runs India CPCB classification, rule evaluation, and precaution synthesis
+  // ─── Core Engine Invocation ───────────────────────────────────
   const engineOutput = generateRecommendations(rawAqi, userProfile, {
     timestamp: rawTimestamp,
-    isDemo: true,
-    location: currentCity
+    isDemo: !isLiveActive,
+    location: baseCity
   });
 
   const aqiResult = engineOutput.aqiResult;
 
   const effectiveCity = {
-    ...currentCity,
+    ...baseCity,
     originalCityName: currentCity.name,
     aqi: aqiResult.aqi,
-    pm25: isSimulated ? activePreset.pm25 : currentCity.pm25,
-    pm10: isSimulated ? activePreset.pm10 : currentCity.pm10,
-    no2: isSimulated ? activePreset.no2 : currentCity.no2,
-    temp: isSimulated ? activePreset.temp : currentCity.temp,
-    humidity: isSimulated ? activePreset.humidity : currentCity.humidity,
-    primaryPollutant: isSimulated ? activePreset.primaryPollutant : currentCity.primaryPollutant,
+    pm25: isSimulated ? activePreset.pm25 : baseCity.pm25,
+    pm10: isSimulated ? activePreset.pm10 : baseCity.pm10,
+    no2: isSimulated ? activePreset.no2 : baseCity.no2,
+    temp: isSimulated ? (activePreset.temp ?? baseCity.temp) : baseCity.temp,
+    humidity: isSimulated ? (activePreset.humidity ?? baseCity.humidity) : baseCity.humidity,
+    primaryPollutant: isSimulated ? activePreset.primaryPollutant : baseCity.primaryPollutant,
     isScenarioSimulated: isSimulated,
     scenarioId: isSimulated ? activePreset.id : 'current',
-    scenarioLabel: isSimulated ? activePreset.label : 'Live Sample',
-    scenarioDesc: isSimulated ? activePreset.desc : currentCity.dataSource,
+    scenarioLabel: isSimulated ? activePreset.label : (isLiveActive ? 'Live Data' : 'Demo Sample'),
+    scenarioDesc: isSimulated ? activePreset.desc : (isLiveActive ? (baseCity.dataSource || 'Live Station') : currentCity.dataSource),
     aqiResult: aqiResult,
-    lastUpdatedText: aqiResult.lastUpdatedText
+    lastUpdatedText: isLiveActive ? (baseCity.lastUpdated || aqiResult.lastUpdatedText) : aqiResult.lastUpdatedText,
+    // Live-data metadata for components
+    dataMode: dataMode,
+    isLiveData: isLiveActive,
+    liveStation: isLiveActive ? baseCity.liveStation : null,
+    liveAqiLabel: isLiveActive ? baseCity.liveAqiLabel : null,
+    liveAttribution: isLiveActive ? baseCity.liveAttribution : null,
+    liveFreshness: isLiveActive ? baseCity.liveFreshness : null,
+    liveMeasurementTime: isLiveActive ? baseCity.liveMeasurementTime : null,
+    liveIsCpcb: isLiveActive ? baseCity.liveIsCpcb : null,
+    liveSubIndices: isLiveActive ? baseCity.liveSubIndices : null,
+    pollutantUnits: isLiveActive ? baseCity.pollutantUnits : null,
+    averagingPeriodNote: isLiveActive ? baseCity.averagingPeriodNote : null
   };
 
   // Sync profile changes to localStorage
@@ -102,7 +132,7 @@ export default function App() {
   return (
     <div className="app-container">
       {/* Top Prototype & Architecture Notice Banner */}
-      <DataNoticeBanner onOpenAi={() => setActiveTab('assistant')} />
+      <DataNoticeBanner currentCity={effectiveCity} onOpenAi={() => setActiveTab('assistant')} />
 
       {/* Navigation Header */}
       <Navbar

@@ -11,7 +11,8 @@ import {
   Check, 
   Layers,
   Clock,
-  HelpCircle
+  HelpCircle,
+  Info
 } from 'lucide-react';
 import { INDOOR_GUIDE_CARDS } from '../data/mockData';
 
@@ -55,9 +56,21 @@ export default function IndoorGuide({ currentCity }) {
         }}>
           Indoor Air Guide — Protect Your Breathing Zone
         </h1>
-        <p style={{ fontSize: '0.925rem', color: '#6B878D', marginTop: '6px', maxWidth: '820px' }}>
-          We spend up to 90% of our time indoors. Outdoor smog infiltrates living quarters, while cooking, dry dusting, and lack of airflow create hazardous localized air pockets. Here is how to achieve clean indoor air, tailored to current ambient conditions ({currentCity.name}: {currentCity.aqi !== null ? `AQI ${currentCity.aqi} • ${currentCity.aqiResult?.category || 'CPCB Standard'}` : 'Sensor Offline'}).
+        <p style={{ fontSize: '0.925rem', color: '#6B878D', marginTop: '6px', maxWidth: '820px', lineHeight: 1.55 }}>
+          We spend up to 90% of our time indoors. Outdoor smog infiltrates living quarters, while cooking, dry dusting, and lack of airflow create hazardous localized air pockets. Here is how to achieve clean indoor air, tailored to current ambient conditions ({currentCity.isLiveData && currentCity.liveStation ? currentCity.liveStation : currentCity.name}: {currentCity.aqi !== null ? `AQI ${currentCity.aqi} • ${currentCity.aqiResult?.category || 'CPCB Standard'}` : 'Sensor Offline'}).
         </p>
+        <div style={{
+          marginTop: '8px',
+          fontSize: '0.775rem',
+          color: '#6B878D',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '6px',
+          fontStyle: 'italic'
+        }}>
+          <Info size={14} color="#7E989C" />
+          <span>Note: Station telemetry reflects ambient outdoor atmospheric air, not exact concentrations inside your private living spaces.</span>
+        </div>
       </div>
 
       {/* Low-Cost & Non-Purifier Highlight Banner */}

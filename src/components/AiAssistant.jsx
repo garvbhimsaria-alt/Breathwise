@@ -393,18 +393,18 @@ Please feel free to ask any question regarding air quality or daily routines!`
               </span>
               <span style={{
                 fontSize: '0.65rem',
-                backgroundColor: 'rgba(141, 224, 195, 0.2)',
-                color: '#8DE0C3',
+                backgroundColor: currentCity.isLiveData ? '#10B981' : 'rgba(141, 224, 195, 0.2)',
+                color: currentCity.isLiveData ? '#FFFFFF' : '#8DE0C3',
                 padding: '2px 8px',
                 borderRadius: '9999px',
                 fontWeight: 700,
-                border: '1px solid rgba(141, 224, 195, 0.4)'
+                border: currentCity.isLiveData ? '1px solid #10B981' : '1px solid rgba(141, 224, 195, 0.4)'
               }}>
-                Demo Knowledge Mode
+                {currentCity.isLiveData ? 'Live Telemetry Active' : 'Demo Knowledge Mode'}
               </span>
             </div>
             <div style={{ fontSize: '0.75rem', color: '#C5DDD7' }}>
-              Context: {currentCity.name} (AQI {currentCity.aqi}) • {userProfile.name}'s Profile
+              Context: {currentCity.isLiveData && currentCity.liveStation ? currentCity.liveStation : currentCity.name} (AQI {currentCity.aqi !== null ? currentCity.aqi : 'N/A'}) • {userProfile.name}'s Profile
             </div>
           </div>
         </div>

@@ -7,10 +7,12 @@ import {
   AlertCircle, 
   Info,
   Search,
-  Sparkles
+  Sparkles,
+  Radio
 } from 'lucide-react';
 import { SAMPLE_CITIES } from '../data/mockData';
 import { classifyAqi } from '../engine';
+import { fetchAqiNearby, pickBestStation, stationToCityFormat } from '../services/aqiApiClient';
 
 export default function LocationModal({ 
   isOpen, 
@@ -41,29 +43,55 @@ export default function LocationModal({
     });
 
     navigator.geolocation.getCurrentPosition(
-      (position) => {
+      async (position) => {
         // Location permitted!
         const { latitude, longitude } = position.coords;
         setGeoState({
-          status: 'granted',
-          message: `Location received (${latitude.toFixed(2)}°, ${longitude.toFixed(2)}°). Mapped to nearest sample air observatory.`
+          status: 'requesting',
+          message: `Location received (${latitude.toFixed(2)}°, ${longitude.toFixed(2)}°). Scanning for nearby monitoring stations...`
         });
 
-        // Map to demo city or create custom location with realistic demo data
-        // For Delhi latitude ~28.6, Mumbai ~19.0, Bengaluru ~12.9
-        let bestMatch = SAMPLE_CITIES[0]; // default Delhi
-        if (latitude < 16) {
-          bestMatch = SAMPLE_CITIES.find(c => c.id === 'bengaluru') || SAMPLE_CITIES[0];
-        } else if (latitude < 24) {
-          bestMatch = SAMPLE_CITIES.find(c => c.id === 'mumbai') || SAMPLE_CITIES[0];
-        } else if (latitude > 45) {
-          bestMatch = SAMPLE_CITIES.find(c => c.id === 'london') || SAMPLE_CITIES[0];
-        } else if (latitude > 35 && longitude < -70) {
-          bestMatch = SAMPLE_CITIES.find(c => c.id === 'newyork') || SAMPLE_CITIES[0];
+        // 1. Try real live station lookup via backend proxy
+        let chosenCity = null;
+        try {
+          const liveResult = await fetchAqiNearby(latitude, longitude);
+          const best = pickBestStation(liveResult);
+          if (best) {
+            chosenCity = stationToCityFormat(best, {
+              id: `geo-${best.stationId || 'station'}`,
+              name: best.city || best.station,
+              region: `Station ${best.distanceKm ? `${best.distanceKm} km away` : 'Nearby'}`
+            });
+            setGeoState({
+              status: 'granted',
+              message: `Connected to live station: ${best.station} (${best.distanceKm ? `${best.distanceKm} km away` : 'nearby'}).`
+            });
+          }
+        } catch (e) {
+          // Live lookup error; proceed to demo fallback
+        }
+
+        // 2. Fallback to nearest demo city if backend unavailable or no stations found
+        if (!chosenCity) {
+          let bestMatch = SAMPLE_CITIES[0]; // default Delhi
+          if (latitude < 16) {
+            bestMatch = SAMPLE_CITIES.find(c => c.id === 'bengaluru') || SAMPLE_CITIES[0];
+          } else if (latitude < 24) {
+            bestMatch = SAMPLE_CITIES.find(c => c.id === 'mumbai') || SAMPLE_CITIES[0];
+          } else if (latitude > 45) {
+            bestMatch = SAMPLE_CITIES.find(c => c.id === 'london') || SAMPLE_CITIES[0];
+          } else if (latitude > 35 && longitude < -70) {
+            bestMatch = SAMPLE_CITIES.find(c => c.id === 'newyork') || SAMPLE_CITIES[0];
+          }
+          chosenCity = bestMatch;
+          setGeoState({
+            status: 'granted',
+            message: `Location received (${latitude.toFixed(2)}°, ${longitude.toFixed(2)}°). Mapped to nearest sample observatory: ${bestMatch.name}.`
+          });
         }
 
         setTimeout(() => {
-          onSelectCity(bestMatch);
+          onSelectCity(chosenCity);
           onClose();
         }, 1200);
       },
