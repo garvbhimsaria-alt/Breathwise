@@ -14,10 +14,14 @@ import {
   Code,
   ChevronDown,
   ChevronUp,
-  Lock
+  Lock,
+  AlertCircle,
+  RefreshCw,
+  Lightbulb,
+  CheckCircle2
 } from 'lucide-react';
 import { AI_SUGGESTED_QUESTIONS, AI_KNOWLEDGE_BASE } from '../data/mockData';
-import { classifyAqi } from '../engine';
+import { sendChatMessage, checkAiServiceStatus } from '../services/aiApiClient';
 
 export default function AiAssistant({ 
   currentCity, 
@@ -26,8 +30,18 @@ export default function AiAssistant({
   initialQuestion 
 }) {
   const [showPayloadInspection, setShowPayloadInspection] = useState(false);
+  const [aiServiceStatus, setAiServiceStatus] = useState({ configured: false, model: null, status: 'checking' });
+  const [inputVal, setInputVal] = useState('');
+  const [isTyping, setIsTyping] = useState(false);
+  const [lastError, setLastError] = useState(null);
+  const messagesEndRef = useRef(null);
+  const isSendingRef = useRef(false);
+
   const aqiRes = engineOutput?.aqiResult || currentCity.aqiResult;
-  const aqiText = aqiRes?.valid ? `**${aqiRes.category}** (AQI ${aqiRes.aqi})` : `**Sensor Data Offline** (Precautionary Baseline Active)`;
+  const hasValidAqi = Boolean(aqiRes?.valid && aqiRes?.aqi !== null);
+  const aqiText = hasValidAqi 
+    ? `**${aqiRes.category}** (AQI ${aqiRes.aqi})` 
+    : `**Sensor Telemetry Offline** (Precautionary Baseline Active)`;
 
   const [messages, setMessages] = useState([
     {
@@ -35,19 +49,27 @@ export default function AiAssistant({
       sender: 'assistant',
       time: 'Just now',
       title: 'Welcome to BreatheWise AI',
-      text: `Hello ${userProfile.name || 'there'}! I am your BreatheWise air-quality and daily routine companion.
+      text: `Hello ${userProfile.name || 'there'}! I am your BreatheWise personal air-quality companion powered by Google Gemini.
 
-I help you navigate urban smog by adapting your schedules, recommending safe exercise windows, optimizing indoor ventilation, and cutting personal emissions.
+I help you navigate urban smog by adapting daily schedules, recommending safe exercise windows, optimizing indoor ventilation, explaining decision-engine guidance, and answering commuting or sustainability questions.
 
-Currently for **${currentCity.name}**, air quality is ${aqiText}.
+Currently for **${currentCity.liveStation || currentCity.name}**, air quality is ${aqiText}.
 
-*Architecture Note: Deterministic CPCB Rule-Based Decision Engine active. Guidance verified against standard air-quality safety thresholds.*`
+*Safety note: BreatheWise CPCB rule-based safety constraints are authoritative. Guidance is grounded in physical atmospheric science.*`,
+      source: 'system'
     }
   ]);
 
-  const [inputVal, setInputVal] = useState('');
-  const [isTyping, setIsTyping] = useState(false);
-  const messagesEndRef = useRef(null);
+  // Check backend Gemini status on mount
+  useEffect(() => {
+    let isMounted = true;
+    checkAiServiceStatus().then(status => {
+      if (isMounted) {
+        setAiServiceStatus(status);
+      }
+    });
+    return () => { isMounted = false; };
+  }, []);
 
   // Auto-scroll to latest message
   const scrollToBottom = () => {
@@ -58,276 +80,156 @@ Currently for **${currentCity.name}**, air quality is ${aqiText}.
     scrollToBottom();
   }, [messages, isTyping]);
 
-  // Handle incoming initialQuestion from Dashboard shortcut
+  // Handle incoming initialQuestion (e.g. from Dashboard or Daily Routine shortcut)
   useEffect(() => {
     if (initialQuestion) {
       handleSend(initialQuestion);
     }
   }, [initialQuestion]);
 
-  const findBestResponse = (query) => {
+  // Fallback pattern matcher when Gemini API is offline or unconfigured
+  const getRuleEngineFallback = (query) => {
     const raw = query.trim();
     const clean = raw.toLowerCase().replace(/[?!.,;:']/g, '');
 
-    // 1. Natural Greeting Intent (Hi, Hello, Hey, Good morning, etc.)
-    const isGreeting = /^(hi|hello|hey|heyy|heya|howdy|good morning|good afternoon|good evening|greetings|sup|yo)$/i.test(clean) ||
-      clean.startsWith('hi ') || clean.startsWith('hello ') || clean.startsWith('hey ') ||
-      clean === 'hi breathewise' || clean === 'hello breathewise';
-
-    if (isGreeting) {
-      const resp = AI_KNOWLEDGE_BASE.greeting.response(userProfile.name, currentCity, currentCity.aqi);
+    if (/^(hi|hello|hey|good morning|greetings)/i.test(clean)) {
       return {
         title: AI_KNOWLEDGE_BASE.greeting.title,
-        response: resp
+        message: AI_KNOWLEDGE_BASE.greeting.response(userProfile.name, currentCity, currentCity.aqi)
       };
     }
-
-    // 2. Gratitude Intent (Thanks, Thank you, Appreciate it, etc.)
-    const isGratitude = /^(thanks|thank you|thx|thank you so much|thanks a lot|appreciate it|thank u|ty)$/i.test(clean) ||
-      clean.includes('thank you') || clean.includes('thanks');
-
-    if (isGratitude) {
-      const resp = AI_KNOWLEDGE_BASE.gratitude.response(userProfile.name);
-      return {
-        title: AI_KNOWLEDGE_BASE.gratitude.title,
-        response: resp
-      };
-    }
-
-    // 3. Goodbye / Sign-off Intent (Bye, Goodbye, See you, Take care, etc.)
-    const isGoodbye = /^(bye|goodbye|cya|see you|take care|good night|have a good day|have a nice day)$/i.test(clean) ||
-      clean.includes('goodbye') || clean.includes('bye bye') || clean.startsWith('bye ');
-
-    if (isGoodbye) {
-      const resp = AI_KNOWLEDGE_BASE.goodbye.response(userProfile.name);
-      return {
-        title: AI_KNOWLEDGE_BASE.goodbye.title,
-        response: resp
-      };
-    }
-
-    // 4. Identity & Capabilities Intent ("Who are you?", "Who created you?", "What can you do?", "What are your capabilities?", "What can you help me with?", "About BreatheWise")
-    const isIdentity = 
-      clean.includes('who are you') || 
-      clean.includes('who created you') || 
-      clean.includes('who made you') || 
-      clean.includes('who built you') || 
-      clean.includes('what can you do') || 
-      clean.includes('what do you do') || 
-      clean.includes('what are your capabilities') || 
-      clean.includes('capabilities') || 
-      clean.includes('what can you help') || 
-      clean.includes('help me with') || 
-      clean.includes('what is breathewise') || 
-      clean.includes('about breathewise') || 
-      clean === 'help';
-
-    if (isIdentity) {
-      const resp = AI_KNOWLEDGE_BASE.identity.response();
-      return {
-        title: AI_KNOWLEDGE_BASE.identity.title,
-        response: resp
-      };
-    }
-
-    // 5. Specific FAQ: What is AQI?
-    if (clean.includes('what is aqi') || clean.includes('explain aqi') || clean.includes('meaning of aqi') || clean.includes('air quality index') || clean === 'aqi') {
-      const resp = AI_KNOWLEDGE_BASE.what_is_aqi ? AI_KNOWLEDGE_BASE.what_is_aqi.response() : 'The Air Quality Index (AQI) is a standardized scale converting complex pollutant measurements into a single number reflecting health risks.';
-      return {
-        title: 'Understanding the Air Quality Index (AQI)',
-        response: resp
-      };
-    }
-
-    // 6. Specific FAQ: What is PM2.5?
-    if (clean.includes('pm25') || clean.includes('pm 25') || clean.includes('pm2.5') || clean.includes('what is pm2.5') || clean.includes('particulate matter 2.5')) {
-      const resp = AI_KNOWLEDGE_BASE.what_is_pm25 ? AI_KNOWLEDGE_BASE.what_is_pm25.response() : 'PM2.5 refers to fine particulate matter under 2.5 micrometers in diameter that penetrates deep into the alveolar sacs of the lungs and blood vessels.';
-      return {
-        title: 'What is PM2.5 & Why is it Dangerous?',
-        response: resp
-      };
-    }
-
-    // 7. Specific FAQ: What is PM10?
-    if (clean.includes('pm10') || clean.includes('pm 10') || clean.includes('what is pm10') || clean.includes('coarse dust')) {
-      const resp = AI_KNOWLEDGE_BASE.what_is_pm10 ? AI_KNOWLEDGE_BASE.what_is_pm10.response() : 'PM10 refers to inhalable particles under 10 micrometers in diameter, such as road dust, construction debris, and pollen.';
-      return {
-        title: 'What is PM10 Coarse Particulate Matter?',
-        response: resp
-      };
-    }
-
-    // 8. Specific FAQ: What is Smog / Inversion?
-    if (clean.includes('what is smog') || clean.includes('define smog') || clean.includes('why is smog') || clean.includes('winter inversion') || clean.includes('thermal inversion') || clean.includes('causes of pollution')) {
-      const resp = AI_KNOWLEDGE_BASE.what_is_smog ? AI_KNOWLEDGE_BASE.what_is_smog.response() : AI_KNOWLEDGE_BASE.inversion_science.response();
-      return {
-        title: 'Understanding Winter Smog & Thermal Inversions',
-        response: resp
-      };
-    }
-
-    // 9. Specific Health FAQ: Lungs & Respiratory Health
-    if (clean.includes('lung') || clean.includes('lungs') || clean.includes('respiratory') || clean.includes('cough') || clean.includes('wheezing')) {
-      const resp = AI_KNOWLEDGE_BASE.lungs_health ? AI_KNOWLEDGE_BASE.lungs_health.response() : 'Prolonged exposure to PM2.5 causes airway inflammation, reduced lung capacity, and increased asthma exacerbations.';
-      return {
-        title: 'How Air Pollution Affects Your Lungs',
-        response: resp
-      };
-    }
-
-    // 10. Specific Health FAQ: Heart & Cardiovascular Health
-    if (clean.includes('heart') || clean.includes('cardio') || clean.includes('blood pressure') || clean.includes('stroke') || clean.includes('artery') || clean.includes('vascular')) {
-      const resp = AI_KNOWLEDGE_BASE.heart_health ? AI_KNOWLEDGE_BASE.heart_health.response() : 'Fine particulate matter enters the bloodstream, promoting systemic inflammation, arterial plaque instability, and hypertension.';
-      return {
-        title: 'Cardiovascular Impact of Fine Particulate Matter',
-        response: resp
-      };
-    }
-
-    // 11. Specific Lifestyle FAQ: High Pollution Diet & Nutrition (Checked before daily plan to catch "eat on high pollution day")
-    if (clean.includes('eat') || clean.includes('food') || clean.includes('diet') || clean.includes('nutrition') || clean.includes('drink') || clean.includes('turmeric') || clean.includes('antioxidant')) {
-      const resp = AI_KNOWLEDGE_BASE.high_pollution_diet ? AI_KNOWLEDGE_BASE.high_pollution_diet.response() : 'Support pulmonary defense with antioxidant-rich foods, vitamin C, turmeric (curcumin), and generous hydration.';
-      return {
-        title: 'Nutritional Support During Smog Season',
-        response: resp
-      };
-    }
-
-    // 12. Severe AQI Emergency Protocol
-    if (clean.includes('severe aqi') || clean.includes('aqi above 400') || clean.includes('hazardous aqi') || clean.includes('emergency protocol') || clean.includes('emergency air')) {
-      const resp = AI_KNOWLEDGE_BASE.severe_aqi_guidance ? AI_KNOWLEDGE_BASE.severe_aqi_guidance.response() : 'During Severe AQI (>400), cancel all outdoor activities, seal living spaces, run HEPA air filtration continuously, and wear a sealed N95 mask if outdoors.';
-      return {
-        title: 'Emergency Guidance for Severe AQI (400+)',
-        response: resp
-      };
-    }
-
-    // 13. Suggested Prompt: Exercise Safety ("Is it safe to exercise outdoors today?", workouts, running, cycling, gym)
-    // Checked BEFORE daily planning to avoid "today" causing cross-matching!
-    if (clean.includes('exercise') || clean.includes('workout') || clean.includes('run') || clean.includes('jog') || clean.includes('gym') || clean.includes('cycling') || clean.includes('sports outdoors') || clean.includes('safe to run') || clean.includes('outdoor workout')) {
-      const resp = AI_KNOWLEDGE_BASE.exercise_safety.response(userProfile.name, currentCity, currentCity.aqi);
+    if (clean.includes('exercise') || clean.includes('run') || clean.includes('workout') || clean.includes('jog')) {
       return {
         title: AI_KNOWLEDGE_BASE.exercise_safety.title,
-        response: resp
+        message: AI_KNOWLEDGE_BASE.exercise_safety.response(userProfile.name, currentCity, currentCity.aqi)
       };
     }
-
-    // 14. Suggested Prompt: Indoor Air Quality ("How can I improve indoor air quality?", purifiers, filters, room air)
-    if (clean.includes('indoor') || clean.includes('purifier') || clean.includes('air at home') || clean.includes('clean air inside') || clean.includes('clean indoor air')) {
-      const resp = AI_KNOWLEDGE_BASE.indoor_air_improvement.response();
+    if (clean.includes('indoor') || clean.includes('purifier') || clean.includes('without an air purifier')) {
       return {
         title: AI_KNOWLEDGE_BASE.indoor_air_improvement.title,
-        response: resp
+        message: AI_KNOWLEDGE_BASE.indoor_air_improvement.response()
       };
     }
-
-    // 15. Suggested Prompt: Commute Precautions ("What precautions should I take during my commute?", traffic, cars, metro)
-    if (clean.includes('commute') || clean.includes('traffic') || clean.includes('travel') || clean.includes('metro') || clean.includes('carpool') || clean.includes('transit') || clean.includes('on the road')) {
-      const resp = AI_KNOWLEDGE_BASE.commute_precautions.response();
+    if (clean.includes('commute') || clean.includes('traffic') || clean.includes('travel')) {
       return {
         title: AI_KNOWLEDGE_BASE.commute_precautions.title,
-        response: resp
+        message: AI_KNOWLEDGE_BASE.commute_precautions.response()
       };
     }
-
-    // 16. Suggested Prompt: Reduce Contribution / Sustainable Lifestyle ("How can I reduce my contribution to air pollution?")
-    if (clean.includes('reduce') || clean.includes('contribution') || clean.includes('my footprint') || clean.includes('sustainable') || clean.includes('cut emissions') || clean.includes('how can i help')) {
-      const resp = AI_KNOWLEDGE_BASE.reduce_contribution.response();
+    if (clean.includes('reduce') || clean.includes('contribution') || clean.includes('sustainable')) {
       return {
         title: AI_KNOWLEDGE_BASE.reduce_contribution.title,
-        response: resp
+        message: AI_KNOWLEDGE_BASE.reduce_contribution.response()
       };
     }
-
-    // 17. Specific Domain Topic: Houseplants vs Purifiers (Checked before daily plan to prevent "plant" matching "plan")
-    if (clean.includes('plant') || clean.includes('houseplant') || clean.includes('snake plant') || clean.includes('spider plant') || clean.includes('flora')) {
-      const resp = AI_KNOWLEDGE_BASE.houseplants.response();
-      return {
-        title: AI_KNOWLEDGE_BASE.houseplants.title,
-        response: resp
-      };
-    }
-
-    // 18. Specific Domain Topic: Mask Guide (N95 vs surgical/cloth)
-    if (clean.includes('mask') || clean.includes('n95') || clean.includes('ffp2') || clean.includes('cloth mask') || clean.includes('respirator')) {
-      const resp = AI_KNOWLEDGE_BASE.mask_guide.response();
-      return {
-        title: AI_KNOWLEDGE_BASE.mask_guide.title,
-        response: resp
-      };
-    }
-
-    // 19. Specific Domain Topic: Vulnerable Demographics (Asthma, kids, seniors)
-    if (clean.includes('asthma') || clean.includes('child') || clean.includes('kids') || clean.includes('senior') || clean.includes('elderly') || clean.includes('baby')) {
-      const resp = AI_KNOWLEDGE_BASE.vulnerable_groups.response();
-      return {
-        title: AI_KNOWLEDGE_BASE.vulnerable_groups.title,
-        response: resp
-      };
-    }
-
-    // 20. Suggested Prompt: Plan Day High AQI (Requires explicit planning intent)
-    const isPlanning = 
-      clean.includes('plan my day') || 
-      clean.includes('daily plan') || 
-      clean.includes('daily routine') || 
-      clean.includes('schedule my day') || 
-      clean.includes('plan today') ||
-      clean.includes('plan my routine') ||
-      clean.includes('how should i plan') ||
-      (clean.includes('routine') && (clean.includes('day') || clean.includes('today') || clean.includes('smog') || clean.includes('aqi')));
-
-    if (isPlanning) {
-      const resp = AI_KNOWLEDGE_BASE.plan_day_high_aqi.response(userProfile.name, currentCity, currentCity.aqi);
+    if (clean.includes('plan') || clean.includes('routine') || clean.includes('morning routine')) {
       return {
         title: AI_KNOWLEDGE_BASE.plan_day_high_aqi.title,
-        response: resp
+        message: AI_KNOWLEDGE_BASE.plan_day_high_aqi.response(userProfile.name, currentCity, currentCity.aqi)
       };
     }
 
-    // 21. Neutral, Transparent Fallback for Unmatched Questions (No assumed asthma, no unsolicited AQI dump)
     return {
-      title: `Guidance on "${raw.length > 32 ? raw.substring(0, 30) + '...' : raw}"`,
-      response: `Thank you for asking! I am **BreatheWise AI**, your companion for urban air quality, personal exposure reduction, and smog management.
-
-I do not have specialized data for **"${raw}"**, but I can provide evidence-based guidance on:
-- **AQI & Pollutants:** Understanding CPCB AQI categories, PM2.5, PM10, and thermal inversions.
-- **Daily Schedules & Routines:** Adapting wake-up, exercise, and ventilation windows to daily smog cycles.
-- **Health & Protection:** Proper N95 mask sealing, indoor air purification, and heart/lung protection.
-- **Commute & Lifestyle:** Public transit precautions and cutting personal emissions.
-
-Please feel free to ask any question regarding air quality or daily routines!`
+      title: `Guidance on "${raw.length > 25 ? raw.substring(0, 22) + '...' : raw}"`,
+      message: `I do not have a specialized rule for "${raw}", but you can ask about current CPCB AQI, safe exercise windows, indoor filtration, commuting precautions, or routine changes.`
     };
   };
 
-  const handleSend = (textToSend) => {
-    const text = textToSend || inputVal.trim();
-    if (!text) return;
+  const handleSend = async (textToSend) => {
+    const text = (textToSend || inputVal).trim();
+    if (!text || isSendingRef.current) return;
+isSendingRef.current = true;
 
     const userMsg = {
       id: `user-${Date.now()}`,
       sender: 'user',
-      time: 'Just now',
+      time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       text: text
     };
 
     setMessages(prev => [...prev, userMsg]);
     setInputVal('');
     setIsTyping(true);
+    setLastError(null);
 
-    // Simulate realistic AI thought / response delay
-    setTimeout(() => {
-      const match = findBestResponse(text);
-      const assistantMsg = {
-        id: `ai-${Date.now()}`,
-        sender: 'assistant',
-        time: 'Just now',
-        title: match.title,
-        text: match.response
-      };
-      setMessages(prev => [...prev, assistantMsg]);
-      setIsTyping(false);
-    }, 450);
+    // Prepare structured context
+    const aqiContext = {
+      aqi: hasValidAqi ? aqiRes.aqi : null,
+      category: hasValidAqi ? aqiRes.category : null,
+      primaryPollutant: currentCity.primaryPollutant || 'Particulates',
+      pm25: currentCity.pm25 ?? null,
+      pm10: currentCity.pm10 ?? null,
+      dataSource: currentCity.dataSource || 'Local Station',
+      station: currentCity.liveStation || currentCity.name,
+      lastUpdated: currentCity.lastUpdated || aqiRes?.lastUpdatedText,
+      isStale: Boolean(aqiRes?.isStale),
+      isLiveData: Boolean(currentCity.isLiveData),
+      isValidAqi: hasValidAqi
+    };
+
+    // History for contextual follow-up (convert previous turns)
+    const historyPayload = messages
+      .filter(m => m.source !== 'system')
+      .slice(-6)
+      .map(m => ({
+        role: m.sender === 'user' ? 'user' : 'assistant',
+        text: m.text || m.data?.message || ''
+      }));
+
+    try {
+      const response = await sendChatMessage({
+        message: text,
+        conversationHistory: historyPayload,
+        aqiContext,
+        userProfile,
+        engineRecommendations: engineOutput?.recommendations || []
+      });
+
+      if (response.status === 'success' && response.data) {
+        const assistantMsg = {
+          id: `ai-${Date.now()}`,
+          sender: 'assistant',
+          time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          text: response.data.message,
+          data: response.data,
+          source: 'gemini',
+          model: response.model
+        };
+        setMessages(prev => [...prev, assistantMsg]);
+      } else {
+        // Fallback mode (e.g. key missing, rate limited, offline)
+        const fallback = getRuleEngineFallback(text);
+        const fallbackMsg = {
+          id: `ai-${Date.now()}`,
+          sender: 'assistant',
+          time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          title: fallback.title,
+          text: fallback.message,
+          source: 'rule_fallback',
+          fallbackReason: response.message || 'Gemini API is not configured or temporarily unreachable.'
+        };
+        setMessages(prev => [...prev, fallbackMsg]);
+      }
+    } catch (err) {
+      console.error('[Assistant Route Error]', err);
+      setLastError('Network error contacting assistant backend. Showing rule-based guidance.');
+      const fallback = getRuleEngineFallback(text);
+      setMessages(prev => [
+        ...prev,
+        {
+          id: `ai-${Date.now()}`,
+          sender: 'assistant',
+          time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          title: fallback.title,
+          text: fallback.message,
+          source: 'rule_fallback',
+          fallbackReason: 'Connection to backend failed.'
+        }
+      ]);
+    } finally {
+      isSendingRef.current = false;
+  setIsTyping(false);
+    }
   };
 
   const handleSubmit = (e) => {
@@ -342,9 +244,11 @@ Please feel free to ask any question regarding air quality or daily routines!`
         sender: 'assistant',
         time: 'Just now',
         title: 'Welcome to BreatheWise AI',
-        text: `Chat reset. Ask me anything about urban smog management, outdoor sports safety, indoor air filters, or your daily schedule!`
+        text: `Conversation reset. Ask me anything about urban smog management, outdoor sports safety, indoor air filters, or personalizing your schedule!`,
+        source: 'system'
       }
     ]);
+    setLastError(null);
   };
 
   return (
@@ -352,8 +256,8 @@ Please feel free to ask any question regarding air quality or daily routines!`
       display: 'flex',
       flexDirection: 'column',
       height: 'calc(100vh - 180px)',
-      minHeight: '560px',
-      maxHeight: '800px',
+      minHeight: '580px',
+      maxHeight: '820px',
       backgroundColor: '#FFFFFF',
       borderRadius: '24px',
       border: '1px solid #C5DDD7',
@@ -387,24 +291,44 @@ Please feel free to ask any question regarding air quality or daily routines!`
             <Sparkles size={20} color="#8DE0C3" />
           </div>
           <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
               <span style={{ fontWeight: 800, fontSize: '1.05rem', color: '#FFFFFF' }}>
                 BreatheWise AI Companion
               </span>
-              <span style={{
-                fontSize: '0.65rem',
-                backgroundColor: currentCity.isLiveData ? '#10B981' : 'rgba(141, 224, 195, 0.2)',
-                color: currentCity.isLiveData ? '#FFFFFF' : '#8DE0C3',
-                padding: '2px 8px',
-                borderRadius: '9999px',
-                fontWeight: 700,
-                border: currentCity.isLiveData ? '1px solid #10B981' : '1px solid rgba(141, 224, 195, 0.4)'
-              }}>
-                {currentCity.isLiveData ? 'Live Telemetry Active' : 'Demo Knowledge Mode'}
-              </span>
+              {aiServiceStatus.configured ? (
+                <span style={{
+                  fontSize: '0.65rem',
+                  backgroundColor: '#065F46',
+                  color: '#A7F3D0',
+                  padding: '2px 8px',
+                  borderRadius: '9999px',
+                  fontWeight: 700,
+                  border: '1px solid #059669',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '4px'
+                }}>
+                  ● Gemini AI Live ({aiServiceStatus.model || 'Flash'})
+                </span>
+              ) : (
+                <span style={{
+                  fontSize: '0.65rem',
+                  backgroundColor: 'rgba(245, 158, 11, 0.2)',
+                  color: '#FDE68A',
+                  padding: '2px 8px',
+                  borderRadius: '9999px',
+                  fontWeight: 700,
+                  border: '1px solid #D97706',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '4px'
+                }}>
+                  ● Rule Engine Active (Add GEMINI_API_KEY in .env)
+                </span>
+              )}
             </div>
-            <div style={{ fontSize: '0.75rem', color: '#C5DDD7' }}>
-              Context: {currentCity.isLiveData && currentCity.liveStation ? currentCity.liveStation : currentCity.name} (AQI {currentCity.aqi !== null ? currentCity.aqi : 'N/A'}) • {userProfile.name}'s Profile
+            <div style={{ fontSize: '0.75rem', color: '#C5DDD7', marginTop: '2px' }}>
+              Context: <strong>{currentCity.liveStation || currentCity.name}</strong> • AQI: {hasValidAqi ? `${aqiRes.aqi} (${aqiRes.category})` : 'Offline (Baseline active)'} • {userProfile.name}'s Profile
             </div>
           </div>
         </div>
@@ -430,7 +354,7 @@ Please feel free to ask any question regarding air quality or daily routines!`
         </button>
       </div>
 
-      {/* Suggested Questions Quick Shelf */}
+      {/* Suggested Questions Quick Shelf (Section 9 Prompt Requirements) */}
       <div style={{
         padding: '10px 16px',
         backgroundColor: '#F3F8F6',
@@ -458,6 +382,7 @@ Please feel free to ask any question regarding air quality or daily routines!`
           <button
             key={idx}
             onClick={() => handleSend(question)}
+            disabled={isTyping}
             style={{
               padding: '5px 12px',
               borderRadius: '9999px',
@@ -467,11 +392,11 @@ Please feel free to ask any question regarding air quality or daily routines!`
               color: '#102E35',
               fontWeight: 500,
               flexShrink: 0,
-              cursor: 'pointer',
+              cursor: isTyping ? 'default' : 'pointer',
               transition: 'all 0.15s ease'
             }}
-            onMouseEnter={(e) => e.target.style.borderColor = '#8DE0C3'}
-            onMouseLeave={(e) => e.target.style.borderColor = '#C5DDD7'}
+            onMouseEnter={(e) => { if (!isTyping) e.target.style.borderColor = '#8DE0C3'; }}
+            onMouseLeave={(e) => { if (!isTyping) e.target.style.borderColor = '#C5DDD7'; }}
           >
             {question}
           </button>
@@ -490,6 +415,8 @@ Please feel free to ask any question regarding air quality or daily routines!`
       }}>
         {messages.map((msg) => {
           const isUser = msg.sender === 'user';
+          const isGemini = msg.source === 'gemini';
+          const isFallback = msg.source === 'rule_fallback';
 
           return (
             <div
@@ -507,43 +434,142 @@ Please feel free to ask any question regarding air quality or daily routines!`
                 width: '34px',
                 height: '34px',
                 borderRadius: '10px',
-                backgroundColor: isUser ? '#102E35' : '#EBF8F4',
-                color: isUser ? '#8DE0C3' : '#102E35',
-                border: isUser ? 'none' : '1px solid rgba(141, 224, 195, 0.6)',
+                backgroundColor: isUser ? '#102E35' : (isGemini ? '#ECFDF5' : '#EBF8F4'),
+                color: isUser ? '#8DE0C3' : (isGemini ? '#065F46' : '#102E35'),
+                border: isUser ? 'none' : (isGemini ? '1px solid #A7F3D0' : '1px solid rgba(141, 224, 195, 0.6)'),
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
                 flexShrink: 0,
                 marginTop: '2px'
               }}>
-                {isUser ? <User size={16} /> : <Bot size={18} />}
+                {isUser ? <User size={16} /> : (isGemini ? <Sparkles size={18} color="#059669" /> : <Bot size={18} />)}
               </div>
 
               {/* Message Bubble */}
               <div style={{
                 backgroundColor: isUser ? '#102E35' : '#FFFFFF',
                 color: isUser ? '#FFFFFF' : '#102E35',
-                padding: '14px 18px',
+                padding: '16px 18px',
                 borderRadius: '18px',
                 borderTopRightRadius: isUser ? '4px' : '18px',
                 borderTopLeftRadius: !isUser ? '4px' : '18px',
                 border: isUser ? 'none' : '1px solid #E2ECE9',
                 boxShadow: isUser ? '0 2px 8px rgba(16, 46, 53, 0.15)' : 'var(--shadow-sm)',
                 fontSize: '0.885rem',
-                lineHeight: 1.55,
-                whiteSpace: 'pre-wrap'
+                lineHeight: 1.55
               }}>
+                {/* Fallback Notice Banner */}
+                {isFallback && (
+                  <div style={{
+                    marginBottom: '10px',
+                    padding: '6px 10px',
+                    borderRadius: '8px',
+                    backgroundColor: '#FFFBEB',
+                    border: '1px solid #FDE68A',
+                    color: '#92400E',
+                    fontSize: '0.75rem',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px'
+                  }}>
+                    <AlertCircle size={14} color="#D97706" style={{ flexShrink: 0 }} />
+                    <span><strong>Offline Rule Fallback:</strong> {msg.fallbackReason}</span>
+                  </div>
+                )}
+
+                {/* Gemini Live Badge */}
+                {isGemini && (
+                  <div style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                    fontSize: '0.7rem',
+                    color: '#065F46',
+                    backgroundColor: '#ECFDF5',
+                    padding: '2px 8px',
+                    borderRadius: '6px',
+                    fontWeight: 700,
+                    marginBottom: '8px'
+                  }}>
+                    <Sparkles size={11} color="#059669" />
+                    <span>Gemini AI ({msg.model || 'gemini-2.5-flash'})</span>
+                  </div>
+                )}
+
                 {msg.title && (
                   <div style={{
                     fontWeight: 700,
-                    fontSize: '0.9rem',
+                    fontSize: '0.925rem',
                     color: isUser ? '#8DE0C3' : '#20464A',
                     marginBottom: '6px'
                   }}>
                     {msg.title}
                   </div>
                 )}
-                {msg.text}
+
+                {/* Main natural-language message */}
+                <div style={{ whiteSpace: 'pre-wrap' }}>
+                  {msg.text}
+                </div>
+
+                {/* Structured Details (When provided by Gemini) */}
+                {msg.data && (
+                  <div style={{ marginTop: '12px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    {/* Actionable Recommendations */}
+                    {Array.isArray(msg.data.recommendations) && msg.data.recommendations.length > 0 && (
+                      <div style={{
+                        padding: '10px 12px',
+                        backgroundColor: '#F3F8F6',
+                        borderRadius: '10px',
+                        border: '1px solid #E2ECE9'
+                      }}>
+                        <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#102E35', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                          <CheckCircle2 size={13} color="#059669" />
+                          <span>Key Recommendations:</span>
+                        </div>
+                        <ul style={{ margin: 0, paddingLeft: '18px', fontSize: '0.8rem', color: '#20464A' }}>
+                          {msg.data.recommendations.map((rec, rIdx) => (
+                            <li key={rIdx} style={{ marginBottom: '2px' }}>{rec}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+
+                    {/* Scientific / Practical Reasoning */}
+                    {msg.data.reasoning && (
+                      <div style={{
+                        fontSize: '0.775rem',
+                        color: '#6B878D',
+                        backgroundColor: '#FFFFFF',
+                        border: '1px dashed #C5DDD7',
+                        padding: '8px 10px',
+                        borderRadius: '8px'
+                      }}>
+                        <strong style={{ color: '#20464A' }}>Reasoning:</strong> {msg.data.reasoning}
+                      </div>
+                    )}
+
+                    {/* Alternatives */}
+                    {Array.isArray(msg.data.alternatives) && msg.data.alternatives.length > 0 && (
+                      <div style={{ fontSize: '0.775rem', color: '#065F46' }}>
+                        <strong>Permitted Alternatives:</strong> {msg.data.alternatives.join(' • ')}
+                      </div>
+                    )}
+
+                    {/* Limitations / Caveats */}
+                    {msg.data.limitations && (
+                      <div style={{
+                        fontSize: '0.725rem',
+                        color: '#7E989C',
+                        fontStyle: 'italic',
+                        marginTop: '2px'
+                      }}>
+                        * {msg.data.limitations}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
           );
@@ -556,13 +582,13 @@ Please feel free to ask any question regarding air quality or daily routines!`
               width: '34px',
               height: '34px',
               borderRadius: '10px',
-              backgroundColor: '#EBF8F4',
+              backgroundColor: '#ECFDF5',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              border: '1px solid #8DE0C3'
+              border: '1px solid #A7F3D0'
             }}>
-              <Bot size={18} color="#102E35" />
+              <Sparkles size={18} color="#059669" />
             </div>
             <div style={{
               padding: '12px 18px',
@@ -574,12 +600,12 @@ Please feel free to ask any question regarding air quality or daily routines!`
               alignItems: 'center',
               gap: '6px'
             }}>
-              <span style={{ fontSize: '0.825rem', color: '#6B878D' }}>BreatheWise is formulating response...</span>
+              <span style={{ fontSize: '0.825rem', color: '#6B878D' }}>Gemini is reasoning through your air-quality context...</span>
               <div style={{
                 width: '6px',
                 height: '6px',
                 borderRadius: '50%',
-                backgroundColor: '#8DE0C3',
+                backgroundColor: '#059669',
                 animation: 'pulseGlow 1s infinite'
               }} />
             </div>
@@ -598,12 +624,35 @@ Please feel free to ask any question regarding air quality or daily routines!`
         flexDirection: 'column',
         gap: '8px'
       }}>
+        {lastError && (
+          <div style={{
+            fontSize: '0.75rem',
+            color: '#B45309',
+            backgroundColor: '#FEF3C7',
+            padding: '4px 10px',
+            borderRadius: '6px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between'
+          }}>
+            <span>{lastError}</span>
+            <button
+              type="button"
+              onClick={() => handleSend(messages[messages.length - 1]?.text)}
+              style={{ background: 'none', border: 'none', color: '#92400E', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '2px' }}
+            >
+              <RefreshCw size={11} /> Retry
+            </button>
+          </div>
+        )}
+
         <div style={{ display: 'flex', gap: '10px' }}>
           <input
             type="text"
             value={inputVal}
             onChange={(e) => setInputVal(e.target.value)}
-            placeholder="Say Hi, or ask about workouts, masks, schedules, or air purifiers..."
+            placeholder="Ask about your workout, commute, air purifiers, or daily schedule..."
+            disabled={isTyping}
             style={{
               flex: 1,
               padding: '12px 16px',
@@ -643,7 +692,7 @@ Please feel free to ask any question regarding air quality or daily routines!`
         }}>
           <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
             <Info size={12} color="#7E989C" />
-            Deterministic CPCB rule-based responses active. Decision Engine context payload available.
+            BreatheWise CPCB Decision Engine safety rules are authoritative. Real-time context injected.
           </span>
           {engineOutput?.geminiContext && (
             <button
@@ -662,7 +711,7 @@ Please feel free to ask any question regarding air quality or daily routines!`
               }}
             >
               <Code size={12} color="#20464A" />
-              <span>{showPayloadInspection ? 'Hide' : 'Inspect'} Decision Engine Context Payload</span>
+              <span>{showPayloadInspection ? 'Hide' : 'Inspect'} Grounding Context Payload</span>
               {showPayloadInspection ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
             </button>
           )}
@@ -685,12 +734,28 @@ Please feel free to ask any question regarding air quality or daily routines!`
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px', color: '#FFFFFF', fontWeight: 700 }}>
               <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                 <Lock size={12} color="#8DE0C3" />
-                Decision Engine System Payload (`engineOutput.geminiContext`)
+                Live Context Payload Sent to Gemini AI
               </span>
-              <span style={{ fontSize: '0.675rem', color: '#8DE0C3' }}>Read-only Contract</span>
+              <span style={{ fontSize: '0.675rem', color: '#8DE0C3' }}>Sanitized & Bounded</span>
             </div>
             <pre style={{ margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>
-              {JSON.stringify(engineOutput.geminiContext, null, 2)}
+              {JSON.stringify({
+                userContext: {
+                  name: userProfile.name,
+                  lifestyle: userProfile.lifestyle,
+                  hasPurifier: userProfile.hasAirPurifier,
+                  commute: userProfile.commuteType
+                },
+                airQualityContext: {
+                  station: currentCity.liveStation || currentCity.name,
+                  aqi: hasValidAqi ? aqiRes.aqi : null,
+                  category: hasValidAqi ? aqiRes.category : 'Offline',
+                  pm25: currentCity.pm25,
+                  pm10: currentCity.pm10,
+                  isLive: currentCity.isLiveData
+                },
+                decisionEngineRules: engineOutput.geminiContext
+              }, null, 2)}
             </pre>
           </div>
         )}

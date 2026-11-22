@@ -243,13 +243,14 @@ export const INITIAL_USER_PROFILE = {
   hasCompletedOnboarding: true
 };
 
-// AI Assistant Knowledge Base for Instant Intelligent Demo Responses
+// AI Assistant Knowledge Base for Suggested Questions and Offline Fallbacks
 export const AI_SUGGESTED_QUESTIONS = [
   'How should I plan my day when AQI is high?',
-  'Is it safe to exercise outdoors today?',
-  'How can I improve indoor air quality?',
+  'Should I go running today?',
+  'How can I improve indoor air quality without an air purifier?',
   'What precautions should I take during my commute?',
-  'How can I reduce my contribution to air pollution?'
+  'How can I reduce my contribution to air pollution?',
+  'Why did BreatheWise recommend changing my morning routine?'
 ];
 
 export const AI_KNOWLEDGE_BASE = {

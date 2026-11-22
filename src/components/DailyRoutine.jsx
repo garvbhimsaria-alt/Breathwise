@@ -29,7 +29,9 @@ export default function DailyRoutine({
   engineOutput,
   activeScenarioId,
   onSelectScenario,
-  onUpdateProfile 
+  onUpdateProfile,
+  onNavigateToTab,
+  onAskAiQuestion 
 }) {
   const [simulatedLifestyle, setSimulatedLifestyle] = useState(userProfile.lifestyle || 'working_professional');
   const [simulatedPurifier, setSimulatedPurifier] = useState(userProfile.hasAirPurifier ?? true);
@@ -492,6 +494,64 @@ export default function DailyRoutine({
       {/* Routine Timeline */}
       <div style={{ position: 'relative' }}>
         
+        {/* Gemini AI Routine Personalization & Explanation Callout (Prompt 04 Section 8) */}
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          padding: '14px 18px',
+          borderRadius: '16px',
+          backgroundColor: '#102E35',
+          color: '#FFFFFF',
+          marginBottom: '20px',
+          flexWrap: 'wrap',
+          gap: '12px',
+          boxShadow: '0 4px 16px rgba(16, 46, 53, 0.12)'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <div style={{
+              width: '36px',
+              height: '36px',
+              borderRadius: '10px',
+              backgroundColor: '#20464A',
+              border: '1px solid #8DE0C3',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              flexShrink: 0
+            }}>
+              <Sparkles size={18} color="#8DE0C3" />
+            </div>
+            <div>
+              <div style={{ fontWeight: 800, fontSize: '0.925rem', color: '#FFFFFF' }}>
+                Need adjustments or explanation for your schedule?
+              </div>
+              <div style={{ fontSize: '0.75rem', color: '#C5DDD7' }}>
+                Gemini AI explains the atmospheric reasoning and helps personalize alternatives within decision-engine constraints.
+              </div>
+            </div>
+          </div>
+          <button
+            onClick={() => {
+              if (onAskAiQuestion) {
+                onAskAiQuestion("Why did BreatheWise recommend changing my morning routine?");
+              } else if (onNavigateToTab) {
+                onNavigateToTab('assistant');
+              }
+            }}
+            className="btn btn-primary"
+            style={{
+              padding: '8px 16px',
+              fontSize: '0.8rem',
+              borderRadius: '10px',
+              whiteSpace: 'nowrap'
+            }}
+          >
+            <Sparkles size={14} color="#8DE0C3" />
+            <span>Ask Gemini Why Routine Changed</span>
+          </button>
+        </div>
+        
         {/* Vertical Timeline Guide Line */}
         <div style={{
           position: 'absolute',
@@ -697,6 +757,39 @@ export default function DailyRoutine({
                         <span style={{ color: isAlert ? '#7F1D1D' : '#065F46', fontWeight: 600 }}>Benefit:</span> {step.expectedBenefit}
                       </p>
                     </div>
+                  </div>
+
+                  {/* Ask Gemini why this step is scheduled */}
+                  <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '4px' }}>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const q = `Why was "${step.title}" adapted to "${step.recommendation}" at ${step.time}?`;
+                        if (onAskAiQuestion) {
+                          onAskAiQuestion(q);
+                        } else if (onNavigateToTab) {
+                          onNavigateToTab('assistant');
+                        }
+                      }}
+                      style={{
+                        background: 'none',
+                        border: 'none',
+                        color: '#065F46',
+                        fontSize: '0.75rem',
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '4px',
+                        padding: '4px 10px',
+                        borderRadius: '6px',
+                        backgroundColor: '#ECFDF5'
+                      }}
+                      title="Ask Gemini assistant to explain this schedule step"
+                    >
+                      <Sparkles size={12} color="#059669" />
+                      <span>Ask Gemini why →</span>
+                    </button>
                   </div>
 
                 </div>

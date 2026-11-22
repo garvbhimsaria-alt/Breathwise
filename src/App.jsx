@@ -167,6 +167,8 @@ export default function App() {
             activeScenarioId={activeScenarioId}
             onSelectScenario={setActiveScenarioId}
             onUpdateProfile={handleSaveProfile}
+            onNavigateToTab={setActiveTab}
+            onAskAiQuestion={handleAskAiQuestion}
           />
         )}
 
