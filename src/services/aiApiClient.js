@@ -5,7 +5,8 @@
  * Keeps Gemini API credentials strictly on the server.
  */
 
-const API_BASE = '/api/assistant';
+const SERVER_URL = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_API_BASE_URL) || '';
+const API_BASE = `${SERVER_URL}/api/assistant`;
 
 /**
  * Check if the Gemini AI service is configured and ready on the backend.

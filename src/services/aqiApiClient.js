@@ -9,7 +9,8 @@
  * error so the app can fall back to demonstration mode.
  */
 
-const API_BASE = '/api/aqi';
+const SERVER_URL = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_API_BASE_URL) || '';
+const API_BASE = `${SERVER_URL}/api/aqi`;
 
 /**
  * Fetch air quality for a city name (primarily CPCB, with OpenAQ fallback).
@@ -92,7 +93,7 @@ export async function fetchProviderStatus() {
  */
 export async function checkBackendHealth() {
   try {
-    const response = await fetch('/api/health', {
+    const response = await fetch(`${SERVER_URL}/api/health`, {
       headers: { 'Accept': 'application/json' }
     });
     if (!response.ok) return { status: 'error', reachable: false };
