@@ -18,8 +18,18 @@ import { isGeminiConfigured, getGeminiModel } from './services/geminiService.js'
 dotenv.config();                // loads .env from project root
 
 const app = express();
-app.use(cors());
-app.use(express.json());
+
+// Secure, configurable CORS
+const allowedOrigins = process.env.CLIENT_ORIGIN
+  ? process.env.CLIENT_ORIGIN.split(',').map(s => s.trim())
+  : '*';
+
+app.use(cors({
+  origin: allowedOrigins,
+  methods: ['GET', 'POST', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
+}));
+app.use(express.json({ limit: '100kb' }));
 
 // ── Health check ──────────────────────────────────────────────
 app.get('/api/health', (_req, res) => {

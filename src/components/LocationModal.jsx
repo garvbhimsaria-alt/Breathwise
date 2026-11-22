@@ -255,6 +255,7 @@ export default function LocationModal({
             <input
               type="text"
               placeholder="Search cities..."
+              aria-label="Search cities"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               style={{

@@ -88,8 +88,22 @@ button, input, select, textarea {
 button {
   cursor: pointer;
   border: none;
-  outline: none;
   background: none;
+}
+
+/* WCAG 2.1 AA Compliant Visible Focus Indicators for Keyboard Users */
+:focus-visible {
+  outline: 2px solid var(--color-mint);
+  outline-offset: 2px;
+}
+
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+[role="button"]:focus-visible {
+  outline: 2px solid var(--color-forest-teal);
+  outline-offset: 2px;
 }
 
 a {

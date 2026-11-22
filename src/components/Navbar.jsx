@@ -51,7 +51,11 @@ export default function Navbar({
         }}>
           {/* Logo & Tagline */}
           <div 
+            role="button"
+            tabIndex={0}
             onClick={() => setActiveTab('dashboard')}
+            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setActiveTab('dashboard'); } }}
+            aria-label="BreatheWise Home Dashboard"
             style={{ 
               display: 'flex', 
               alignItems: 'center', 
@@ -164,6 +168,7 @@ export default function Navbar({
             <button
               onClick={onOpenLocationModal}
               title="Change active location"
+              aria-label={`Change location, current location is ${currentCity?.name || 'Select City'}`}
               style={{
                 display: 'flex',
                 alignItems: 'center',
@@ -184,13 +189,17 @@ export default function Navbar({
               </span>
               <span style={{
                 fontSize: '0.625rem',
-                backgroundColor: 'rgba(255, 255, 255, 0.15)',
-                color: '#8DE0C3',
+                backgroundColor: currentCity?.isLiveData 
+                  ? '#10B981' 
+                  : (currentCity?.isScenarioSimulated ? '#7C3AED' : 'rgba(255, 255, 255, 0.15)'),
+                color: (currentCity?.isLiveData || currentCity?.isScenarioSimulated) 
+                  ? '#FFFFFF' 
+                  : '#8DE0C3',
                 padding: '1px 5px',
                 borderRadius: '4px',
                 fontWeight: 600
               }}>
-                Demo
+                {currentCity?.isLiveData ? 'Live' : (currentCity?.isScenarioSimulated ? 'Sim' : 'Demo')}
               </span>
               <ChevronDown size={14} color="#7E989C" />
             </button>

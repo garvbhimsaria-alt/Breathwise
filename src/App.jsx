@@ -32,7 +32,16 @@ export default function App() {
 
   const [isLocationModalOpen, setIsLocationModalOpen] = useState(false);
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
-  const [isOnboardingModalOpen, setIsOnboardingModalOpen] = useState(false);
+  const [isOnboardingModalOpen, setIsOnboardingModalOpen] = useState(() => {
+    const saved = localStorage.getItem('breathewise_profile');
+    if (!saved) return true; // First-time user: automatically guide through setup
+    try {
+      const parsed = JSON.parse(saved);
+      return !parsed.hasCompletedOnboarding;
+    } catch (e) {
+      return false;
+    }
+  });
   const [initialAiQuestion, setInitialAiQuestion] = useState(null);
 
   // ─── Live Data Hook ───────────────────────────────────────────

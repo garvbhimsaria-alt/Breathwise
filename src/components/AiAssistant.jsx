@@ -652,6 +652,7 @@ isSendingRef.current = true;
             value={inputVal}
             onChange={(e) => setInputVal(e.target.value)}
             placeholder="Ask about your workout, commute, air purifiers, or daily schedule..."
+            aria-label="Ask BreatheWise Assistant a question"
             disabled={isTyping}
             style={{
               flex: 1,
@@ -667,6 +668,7 @@ isSendingRef.current = true;
           <button
             type="submit"
             disabled={!inputVal.trim() || isTyping}
+            aria-label="Send message"
             className="btn btn-primary"
             style={{
               padding: '0 20px',
