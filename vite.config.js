@@ -7,6 +7,15 @@ export default defineConfig({
   server: {
     port: 3000,
     open: false,
-    host: true
+    host: true,
+    proxy: {
+      // Forward /api calls to the Express backend during development.
+      // This keeps API keys server-side and avoids CORS issues.
+      '/api': {
+        target: 'http://localhost:5000',
+        changeOrigin: true,
+        secure: false
+      }
+    }
   }
 });

@@ -116,18 +116,28 @@ export default function Dashboard({
               </span>
               <span style={{
                 fontSize: '0.675rem',
-                backgroundColor: currentCity.isScenarioSimulated ? '#F5F3FF' : '#FFF7ED',
-                color: currentCity.isScenarioSimulated ? '#7C3AED' : '#C2410C',
-                border: `1px solid ${currentCity.isScenarioSimulated ? '#DDD6FE' : '#FFEDD5'}`,
+                backgroundColor: currentCity.isScenarioSimulated 
+                  ? '#F5F3FF' 
+                  : (currentCity.isLiveData ? '#ECFDF5' : '#FFF7ED'),
+                color: currentCity.isScenarioSimulated 
+                  ? '#7C3AED' 
+                  : (currentCity.isLiveData ? '#065F46' : '#C2410C'),
+                border: `1px solid ${currentCity.isScenarioSimulated 
+                  ? '#DDD6FE' 
+                  : (currentCity.isLiveData ? '#A7F3D0' : '#FFEDD5')}`,
                 padding: '1px 6px',
                 borderRadius: '9999px',
                 fontWeight: 700
               }}>
-                {currentCity.isScenarioSimulated ? `${currentCity.scenarioLabel}` : 'Sample Data'}
+                {currentCity.isScenarioSimulated 
+                  ? `${currentCity.scenarioLabel}` 
+                  : (currentCity.isLiveData ? 'Live Station' : 'Sample Data')}
               </span>
             </div>
             <div style={{ fontSize: '0.75rem', color: '#6B878D' }}>
-              {currentCity.region || 'Region'} • Click to switch city
+              {currentCity.isLiveData && currentCity.liveStation
+                ? `${currentCity.liveStation}${currentCity.liveDistanceKm ? ` • ${currentCity.liveDistanceKm} km away` : ''}`
+                : (currentCity.region || 'Region')} • Click to switch city
             </div>
           </div>
         </div>
@@ -234,25 +244,29 @@ export default function Dashboard({
             border: `1.5px solid ${aqiResult.borderColor}`
           }}>
             <div style={{
-              fontSize: '0.75rem',
+              fontSize: '0.725rem',
               fontWeight: 700,
               textTransform: 'uppercase',
-              letterSpacing: '0.06em',
+              letterSpacing: '0.04em',
               color: aqiResult.textColor,
-              marginBottom: '4px'
+              marginBottom: '4px',
+              maxWidth: '220px',
+              lineHeight: 1.2
             }}>
-              CPCB Air Quality Index
+              {currentCity.isLiveData 
+                ? (currentCity.liveAqiLabel || 'BreatheWise AQI Estimate (CPCB methodology)') 
+                : 'CPCB Air Quality Index'}
             </div>
 
             <div style={{
-              fontSize: isDataMissing ? '2.4rem' : '4.2rem',
+              fontSize: isDataMissing ? '2.0rem' : '4.2rem',
               fontWeight: 900,
               lineHeight: 1.1,
               color: aqiResult.color,
               letterSpacing: '-0.04em',
               margin: '8px 0'
             }}>
-              {isDataMissing ? 'N/A' : aqiResult.aqi}
+              {isDataMissing ? 'AQI Unavailable' : aqiResult.aqi}
             </div>
 
             <div style={{
@@ -270,7 +284,11 @@ export default function Dashboard({
             </div>
 
             <div style={{ fontSize: '0.775rem', color: aqiResult.textColor, fontWeight: 500 }}>
-              Primary concern: <strong>{currentCity.primaryPollutant || 'Particulates'}</strong>
+              {aqiResult.valid ? (
+                <>Primary concern: <strong>{currentCity.primaryPollutant || 'Particulates'}</strong>{currentCity.liveSubIndices && currentCity.primaryPollutant ? ` (Sub-index ${currentCity.liveSubIndices[currentCity.primaryPollutant.toLowerCase().replace(/[^a-z0-9]/g, '')] ?? aqiResult.aqi})` : ''}</>
+              ) : (
+                <span>{currentCity.liveAqiLabel || 'Individual pollutant telemetry displayed below'}</span>
+              )}
             </div>
           </div>
 
@@ -344,10 +362,12 @@ export default function Dashboard({
               }}>
                 <div style={{ fontSize: '0.725rem', fontWeight: 600, color: '#6B878D' }}>PM2.5</div>
                 <div style={{ fontSize: '1.15rem', fontWeight: 800, color: '#102E35' }}>
-                  {currentCity.pm25 !== null ? currentCity.pm25 : '—'} <span style={{ fontSize: '0.7rem', fontWeight: 500 }}>µg/m³</span>
+                  {currentCity.pm25 !== null ? currentCity.pm25 : '—'} <span style={{ fontSize: '0.7rem', fontWeight: 500 }}>{currentCity.pollutantUnits?.pm25 || 'µg/m³'}</span>
                 </div>
                 <div style={{ fontSize: '0.675rem', color: currentCity.pm25 > 60 ? '#EF4444' : '#10B981', fontWeight: 600 }}>
-                  {currentCity.pm25 !== null ? (currentCity.pm25 > 60 ? 'Above Guide' : 'Moderate') : 'Offline'}
+                  {currentCity.liveSubIndices?.pm25 !== undefined 
+                    ? `Sub-index: ${currentCity.liveSubIndices.pm25}` 
+                    : (currentCity.pm25 !== null ? (currentCity.pm25 > 60 ? 'Above Guide' : 'Moderate') : 'Offline')}
                 </div>
               </div>
 
@@ -359,10 +379,12 @@ export default function Dashboard({
               }}>
                 <div style={{ fontSize: '0.725rem', fontWeight: 600, color: '#6B878D' }}>PM10</div>
                 <div style={{ fontSize: '1.15rem', fontWeight: 800, color: '#102E35' }}>
-                  {currentCity.pm10 !== null ? currentCity.pm10 : '—'} <span style={{ fontSize: '0.7rem', fontWeight: 500 }}>µg/m³</span>
+                  {currentCity.pm10 !== null ? currentCity.pm10 : '—'} <span style={{ fontSize: '0.7rem', fontWeight: 500 }}>{currentCity.pollutantUnits?.pm10 || 'µg/m³'}</span>
                 </div>
                 <div style={{ fontSize: '0.675rem', color: currentCity.pm10 > 100 ? '#EA580C' : '#10B981', fontWeight: 600 }}>
-                  {currentCity.pm10 !== null ? 'Coarse dust' : 'Offline'}
+                  {currentCity.liveSubIndices?.pm10 !== undefined 
+                    ? `Sub-index: ${currentCity.liveSubIndices.pm10}` 
+                    : (currentCity.pm10 !== null ? 'Coarse dust' : 'Offline')}
                 </div>
               </div>
 
@@ -374,9 +396,13 @@ export default function Dashboard({
               }}>
                 <div style={{ fontSize: '0.725rem', fontWeight: 600, color: '#6B878D' }}>Nitrogen NO2</div>
                 <div style={{ fontSize: '1.15rem', fontWeight: 800, color: '#102E35' }}>
-                  {currentCity.no2 !== null ? currentCity.no2 : '—'} <span style={{ fontSize: '0.7rem', fontWeight: 500 }}>ppb</span>
+                  {currentCity.no2 !== null ? currentCity.no2 : '—'} <span style={{ fontSize: '0.7rem', fontWeight: 500 }}>{currentCity.pollutantUnits?.no2 || 'µg/m³'}</span>
                 </div>
-                <div style={{ fontSize: '0.675rem', color: '#6B878D', fontWeight: 500 }}>Traffic emission</div>
+                <div style={{ fontSize: '0.675rem', color: '#6B878D', fontWeight: 500 }}>
+                  {currentCity.liveSubIndices?.no2 !== undefined 
+                    ? `Sub-index: ${currentCity.liveSubIndices.no2}` 
+                    : 'Traffic emission'}
+                </div>
               </div>
 
               <div style={{
@@ -386,14 +412,68 @@ export default function Dashboard({
                 padding: '10px 12px'
               }}>
                 <div style={{ fontSize: '0.725rem', fontWeight: 600, color: '#6B878D' }}>Weather</div>
-                <div style={{ fontSize: '1.15rem', fontWeight: 800, color: '#102E35', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                  {currentCity.temp}°C
-                </div>
-                <div style={{ fontSize: '0.675rem', color: '#6B878D', fontWeight: 500 }}>
-                  Humidity: {currentCity.humidity}%
-                </div>
+                {currentCity.temp !== null && currentCity.temp !== undefined ? (
+                  <>
+                    <div style={{ fontSize: '1.15rem', fontWeight: 800, color: '#102E35', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                      {currentCity.temp}°C
+                    </div>
+                    <div style={{ fontSize: '0.675rem', color: '#6B878D', fontWeight: 500 }}>
+                      Humidity: {currentCity.humidity !== null && currentCity.humidity !== undefined ? `${currentCity.humidity}%` : 'Unavailable'}
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div style={{ fontSize: '1.15rem', fontWeight: 800, color: '#7E989C' }}>
+                      —
+                    </div>
+                    <div style={{ fontSize: '0.675rem', color: '#7E989C', fontWeight: 500 }}>
+                      Station doesn't report weather
+                    </div>
+                  </>
+                )}
               </div>
             </div>
+
+            {/* Additional Gases Breakdown (CO, SO2, O3, NH3) */}
+            {currentCity.isLiveData && (currentCity.co != null || currentCity.so2 != null || currentCity.o3 != null || currentCity.nh3 != null) && (
+              <div style={{
+                display: 'flex',
+                flexWrap: 'wrap',
+                gap: '8px',
+                fontSize: '0.75rem',
+                color: '#3D5A60',
+                backgroundColor: '#F3F8F6',
+                padding: '8px 12px',
+                borderRadius: '10px',
+                border: '1px solid #E2ECE9'
+              }}>
+                <span style={{ fontWeight: 700, color: '#102E35' }}>Additional telemetry:</span>
+                {currentCity.co != null && (
+                  <span>
+                    CO: <strong>{currentCity.co} {currentCity.pollutantUnits?.co || 'mg/m³'}</strong>
+                    {currentCity.liveSubIndices?.co !== undefined ? ` (Sub-index ${currentCity.liveSubIndices.co})` : ''}
+                  </span>
+                )}
+                {currentCity.so2 != null && (
+                  <span>
+                    • SO₂: <strong>{currentCity.so2} {currentCity.pollutantUnits?.so2 || 'µg/m³'}</strong>
+                    {currentCity.liveSubIndices?.so2 !== undefined ? ` (Sub-index ${currentCity.liveSubIndices.so2})` : ''}
+                  </span>
+                )}
+                {currentCity.o3 != null && (
+                  <span>
+                    • O₃: <strong>{currentCity.o3} {currentCity.pollutantUnits?.o3 || 'µg/m³'}</strong>
+                    {currentCity.liveSubIndices?.o3 !== undefined ? ` (Sub-index ${currentCity.liveSubIndices.o3})` : ''}
+                  </span>
+                )}
+                {currentCity.nh3 != null && (
+                  <span>
+                    • NH₃: <strong>{currentCity.nh3} {currentCity.pollutantUnits?.nh3 || 'µg/m³'}</strong>
+                    {currentCity.liveSubIndices?.nh3 !== undefined ? ` (Sub-index ${currentCity.liveSubIndices.nh3})` : ''}
+                  </span>
+                )}
+              </div>
+            )}
 
             {/* Data Source & Timestamp Notice */}
             <div style={{
@@ -407,18 +487,41 @@ export default function Dashboard({
               flexWrap: 'wrap',
               gap: '8px'
             }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
                 <Clock size={14} color="#7E989C" />
-                <span>Source: {currentCity.dataSource || 'Demo Air Quality Network'} • {aqiResult.lastUpdatedText || 'Updated recently'}</span>
+                <span>
+                  Source: <strong>{currentCity.dataSource || 'Demo Air Quality Network'}</strong>
+                  {currentCity.liveMeasurementTime ? ` • Measured: ${new Date(currentCity.liveMeasurementTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : ''}
+                  {' • '}{aqiResult.lastUpdatedText || 'Updated recently'}
+                </span>
+                {currentCity.liveAttribution && (
+                  <div style={{ fontSize: '0.7rem', color: '#7E989C', width: '100%', marginTop: '2px' }}>
+                    {currentCity.liveAttribution}
+                  </div>
+                )}
+                {currentCity.isLiveData && (
+                  <>
+                    <div style={{ fontSize: '0.675rem', color: '#7E989C', width: '100%', marginTop: '2px', fontStyle: 'italic' }}>
+                      * Ambient outdoor monitoring station telemetry; does not represent filtered indoor air inside your home or room.
+                    </div>
+                    <div style={{ fontSize: '0.675rem', color: '#7E989C', width: '100%', marginTop: '2px', fontStyle: 'italic' }}>
+                      * {currentCity.averagingPeriodNote || 'Recent observation; official CPCB AQI requires 24-hr averaging with minimum 16 hours of monitoring (67% observation coverage).'}
+                    </div>
+                  </>
+                )}
               </div>
               <div style={{
                 display: 'inline-flex',
                 alignItems: 'center',
                 gap: '4px',
-                color: currentCity.isScenarioSimulated ? '#7C3AED' : '#C2410C',
+                color: currentCity.isScenarioSimulated 
+                  ? '#7C3AED' 
+                  : (currentCity.isLiveData ? '#065F46' : '#C2410C'),
                 fontWeight: 600
               }}>
-                <span>● {currentCity.isScenarioSimulated ? `Simulated ${currentCity.scenarioLabel}` : 'Clearly Labelled Sample Scenario'}</span>
+                <span>● {currentCity.isScenarioSimulated 
+                  ? `Simulated ${currentCity.scenarioLabel}` 
+                  : (currentCity.isLiveData ? 'Verified Station Telemetry' : 'Clearly Labelled Sample Scenario')}</span>
               </div>
             </div>
           </div>
@@ -530,7 +633,7 @@ export default function Dashboard({
               AI Assistant Ready
             </span>
             <span style={{ fontSize: '0.75rem', color: '#7E989C' }}>
-              • Generative Gemini Interface Prepared
+              • Rule-Based Air Quality Companion
             </span>
           </div>
 

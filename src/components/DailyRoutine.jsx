@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Calendar, 
   Clock, 
@@ -29,12 +29,52 @@ export default function DailyRoutine({
   engineOutput,
   activeScenarioId,
   onSelectScenario,
-  onUpdateProfile 
+  onUpdateProfile,
+  onNavigateToTab,
+  onAskAiQuestion 
 }) {
   const [simulatedLifestyle, setSimulatedLifestyle] = useState(userProfile.lifestyle || 'working_professional');
   const [simulatedPurifier, setSimulatedPurifier] = useState(userProfile.hasAirPurifier ?? true);
   const [simulatedWakeUp, setSimulatedWakeUp] = useState(userProfile.wakeUpTime || '06:30');
   const [simulatedSleep, setSimulatedSleep] = useState(userProfile.sleepTime || '22:30');
+
+  // Synchronize local simulation state whenever saved userProfile prop changes
+  useEffect(() => {
+    if (userProfile.lifestyle) {
+      setSimulatedLifestyle(userProfile.lifestyle);
+    }
+  }, [userProfile.lifestyle]);
+
+  useEffect(() => {
+    if (userProfile.hasAirPurifier !== undefined) {
+      setSimulatedPurifier(userProfile.hasAirPurifier);
+    }
+  }, [userProfile.hasAirPurifier]);
+
+  useEffect(() => {
+    if (userProfile.wakeUpTime) {
+      setSimulatedWakeUp(userProfile.wakeUpTime);
+    }
+  }, [userProfile.wakeUpTime]);
+
+  useEffect(() => {
+    if (userProfile.sleepTime) {
+      setSimulatedSleep(userProfile.sleepTime);
+    }
+  }, [userProfile.sleepTime]);
+
+  const isSimulationDirty = 
+    simulatedLifestyle !== userProfile.lifestyle ||
+    simulatedPurifier !== userProfile.hasAirPurifier ||
+    simulatedWakeUp !== userProfile.wakeUpTime ||
+    simulatedSleep !== userProfile.sleepTime;
+
+  const handleResetToProfileDefaults = () => {
+    setSimulatedLifestyle(userProfile.lifestyle || 'working_professional');
+    setSimulatedPurifier(userProfile.hasAirPurifier ?? true);
+    setSimulatedWakeUp(userProfile.wakeUpTime || '06:30');
+    setSimulatedSleep(userProfile.sleepTime || '22:30');
+  };
 
   // Active routine based on effective city AQI and lifestyle inputs
   const dynamicProfile = {
@@ -195,11 +235,33 @@ export default function DailyRoutine({
               fontWeight: 700,
               border: '1px solid #A7F3D0'
             }}>
-              4 AQI Scenarios
+              CPCB Tiers & Scenarios
             </span>
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            {isSimulationDirty && (
+              <button
+                onClick={handleResetToProfileDefaults}
+                title="Reset lifestyle, purifier, and wake-up toggles back to saved profile settings"
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  fontSize: '0.775rem',
+                  color: '#065F46',
+                  fontWeight: 600,
+                  backgroundColor: '#ECFDF5',
+                  padding: '5px 10px',
+                  borderRadius: '8px',
+                  border: '1px solid #A7F3D0',
+                  cursor: 'pointer'
+                }}
+              >
+                <RefreshCw size={13} />
+                <span>Reset to Profile Defaults</span>
+              </button>
+            )}
             {activeScenarioId !== 'current' && (
               <button
                 onClick={() => onSelectScenario('current')}
@@ -432,6 +494,64 @@ export default function DailyRoutine({
       {/* Routine Timeline */}
       <div style={{ position: 'relative' }}>
         
+        {/* Gemini AI Routine Personalization & Explanation Callout (Prompt 04 Section 8) */}
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          padding: '14px 18px',
+          borderRadius: '16px',
+          backgroundColor: '#102E35',
+          color: '#FFFFFF',
+          marginBottom: '20px',
+          flexWrap: 'wrap',
+          gap: '12px',
+          boxShadow: '0 4px 16px rgba(16, 46, 53, 0.12)'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <div style={{
+              width: '36px',
+              height: '36px',
+              borderRadius: '10px',
+              backgroundColor: '#20464A',
+              border: '1px solid #8DE0C3',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              flexShrink: 0
+            }}>
+              <Sparkles size={18} color="#8DE0C3" />
+            </div>
+            <div>
+              <div style={{ fontWeight: 800, fontSize: '0.925rem', color: '#FFFFFF' }}>
+                Need adjustments or explanation for your schedule?
+              </div>
+              <div style={{ fontSize: '0.75rem', color: '#C5DDD7' }}>
+                Gemini AI explains the atmospheric reasoning and helps personalize alternatives within decision-engine constraints.
+              </div>
+            </div>
+          </div>
+          <button
+            onClick={() => {
+              if (onAskAiQuestion) {
+                onAskAiQuestion("Why did BreatheWise recommend changing my morning routine?");
+              } else if (onNavigateToTab) {
+                onNavigateToTab('assistant');
+              }
+            }}
+            className="btn btn-primary"
+            style={{
+              padding: '8px 16px',
+              fontSize: '0.8rem',
+              borderRadius: '10px',
+              whiteSpace: 'nowrap'
+            }}
+          >
+            <Sparkles size={14} color="#8DE0C3" />
+            <span>Ask Gemini Why Routine Changed</span>
+          </button>
+        </div>
+        
         {/* Vertical Timeline Guide Line */}
         <div style={{
           position: 'absolute',
@@ -639,6 +759,39 @@ export default function DailyRoutine({
                     </div>
                   </div>
 
+                  {/* Ask Gemini why this step is scheduled */}
+                  <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '4px' }}>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const q = `Why was "${step.title}" adapted to "${step.recommendation}" at ${step.time}?`;
+                        if (onAskAiQuestion) {
+                          onAskAiQuestion(q);
+                        } else if (onNavigateToTab) {
+                          onNavigateToTab('assistant');
+                        }
+                      }}
+                      style={{
+                        background: 'none',
+                        border: 'none',
+                        color: '#065F46',
+                        fontSize: '0.75rem',
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '4px',
+                        padding: '4px 10px',
+                        borderRadius: '6px',
+                        backgroundColor: '#ECFDF5'
+                      }}
+                      title="Ask Gemini assistant to explain this schedule step"
+                    >
+                      <Sparkles size={12} color="#059669" />
+                      <span>Ask Gemini why →</span>
+                    </button>
+                  </div>
+
                 </div>
               </div>
             );
@@ -660,8 +813,8 @@ export default function DailyRoutine({
       }}>
         <Sparkles size={20} color="#20464A" style={{ flexShrink: 0, marginTop: '2px' }} />
         <div>
-          <strong style={{ color: '#102E35' }}>Stage 2 Integration Architecture:</strong>
-          {' '}This daily routine engine currently implements deterministic heuristic mapping for our sample scenarios. Its clean schema (`time`, `category`, `recommendation`, `reasoning`, `practicalAlternative`, `expectedBenefit`) has been purpose-built to accept live parameter injection from both external AQI sensors and the Gemini 1.5/2.0 API in subsequent stages.
+          <strong style={{ color: '#102E35' }}>Decision Engine Architecture:</strong>
+          {' '}This daily routine engine implements explainable, rule-based decision trees mapped to official CPCB breakpoints and user schedules. Its modular schema (`time`, `category`, `recommendation`, `reasoning`, `practicalAlternative`, `expectedBenefit`) delivers deterministic, medically sound guidance with full auditability.
         </div>
       </div>
 
