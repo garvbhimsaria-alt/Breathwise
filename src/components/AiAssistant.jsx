@@ -20,7 +20,7 @@ import {
   Lightbulb,
   CheckCircle2
 } from 'lucide-react';
-import { AI_SUGGESTED_QUESTIONS, AI_KNOWLEDGE_BASE } from '../data/mockData';
+import { AI_SUGGESTED_QUESTIONS } from '../data/mockData';
 import { sendChatMessage, checkAiServiceStatus } from '../services/aiApiClient';
 
 export default function AiAssistant({ 
@@ -87,53 +87,12 @@ Currently for **${currentCity.liveStation || currentCity.name}**, air quality is
     }
   }, [initialQuestion]);
 
-  // Fallback pattern matcher when Gemini API is offline or unconfigured
-  const getRuleEngineFallback = (query) => {
-    const raw = query.trim();
-    const clean = raw.toLowerCase().replace(/[?!.,;:']/g, '');
-
-    if (/^(hi|hello|hey|good morning|greetings)/i.test(clean)) {
-      return {
-        title: AI_KNOWLEDGE_BASE.greeting.title,
-        message: AI_KNOWLEDGE_BASE.greeting.response(userProfile.name, currentCity, currentCity.aqi)
-      };
-    }
-    if (clean.includes('exercise') || clean.includes('run') || clean.includes('workout') || clean.includes('jog')) {
-      return {
-        title: AI_KNOWLEDGE_BASE.exercise_safety.title,
-        message: AI_KNOWLEDGE_BASE.exercise_safety.response(userProfile.name, currentCity, currentCity.aqi)
-      };
-    }
-    if (clean.includes('indoor') || clean.includes('purifier') || clean.includes('without an air purifier')) {
-      return {
-        title: AI_KNOWLEDGE_BASE.indoor_air_improvement.title,
-        message: AI_KNOWLEDGE_BASE.indoor_air_improvement.response()
-      };
-    }
-    if (clean.includes('commute') || clean.includes('traffic') || clean.includes('travel')) {
-      return {
-        title: AI_KNOWLEDGE_BASE.commute_precautions.title,
-        message: AI_KNOWLEDGE_BASE.commute_precautions.response()
-      };
-    }
-    if (clean.includes('reduce') || clean.includes('contribution') || clean.includes('sustainable')) {
-      return {
-        title: AI_KNOWLEDGE_BASE.reduce_contribution.title,
-        message: AI_KNOWLEDGE_BASE.reduce_contribution.response()
-      };
-    }
-    if (clean.includes('plan') || clean.includes('routine') || clean.includes('morning routine')) {
-      return {
-        title: AI_KNOWLEDGE_BASE.plan_day_high_aqi.title,
-        message: AI_KNOWLEDGE_BASE.plan_day_high_aqi.response(userProfile.name, currentCity, currentCity.aqi)
-      };
-    }
-
-    return {
-      title: `Guidance on "${raw.length > 25 ? raw.substring(0, 22) + '...' : raw}"`,
-      message: `I do not have a specialized rule for "${raw}", but you can ask about current CPCB AQI, safe exercise windows, indoor filtration, commuting precautions, or routine changes.`
-    };
-  };
+  // Used ONLY when the backend cannot be reached at all. The server handles
+  // greetings, thanks, current AQI and basic-mode answers itself.
+  const getOfflineMessage = () => ({
+    title: 'Assistant unreachable',
+    message: "I can't reach the assistant service right now. Please check the dashboard for the latest AQI reading and try again in a moment."
+  });
 
   const handleSend = async (textToSend) => {
     const text = (textToSend || inputVal).trim();
@@ -156,14 +115,16 @@ isSendingRef.current = true;
     const aqiContext = {
       aqi: hasValidAqi ? aqiRes.aqi : null,
       category: hasValidAqi ? aqiRes.category : null,
-      primaryPollutant: currentCity.primaryPollutant || 'Particulates',
+      primaryPollutant: currentCity.primaryPollutant || null,
       pm25: currentCity.pm25 ?? null,
       pm10: currentCity.pm10 ?? null,
-      dataSource: currentCity.dataSource || 'Local Station',
+      dataSource: currentCity.dataSource || null,
       station: currentCity.liveStation || currentCity.name,
       lastUpdated: currentCity.lastUpdated || aqiRes?.lastUpdatedText,
       isStale: Boolean(aqiRes?.isStale),
       isLiveData: Boolean(currentCity.isLiveData),
+      // TODO(confirm): use the property the app really uses to mark demo data
+      isDemo: Boolean(currentCity.isDemo || currentCity.isDemoData || /demo/i.test(String(currentCity.dataSource || ''))),
       isValidAqi: hasValidAqi
     };
 
@@ -186,19 +147,22 @@ isSendingRef.current = true;
       });
 
       if (response.status === 'success' && response.data) {
+        // source from server: 'gemini' | 'instant' (greetings, current AQI) | 'basic' (AI unavailable)
+        const uiSource = response.source === 'basic' ? 'rule_fallback' : (response.source === 'instant' ? 'instant' : 'gemini');
         const assistantMsg = {
           id: `ai-${Date.now()}`,
           sender: 'assistant',
           time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
           text: response.data.message,
           data: response.data,
-          source: 'gemini',
-          model: response.model
+          source: uiSource,
+          model: response.model,
+          fallbackReason: response.source === 'basic' ? (response.fallbackReason || 'The AI service is unavailable.') : undefined
         };
         setMessages(prev => [...prev, assistantMsg]);
       } else {
-        // Fallback mode (e.g. key missing, rate limited, offline)
-        const fallback = getRuleEngineFallback(text);
+        // Backend reachable but returned an error payload
+        const fallback = getOfflineMessage();
         const fallbackMsg = {
           id: `ai-${Date.now()}`,
           sender: 'assistant',
@@ -206,14 +170,14 @@ isSendingRef.current = true;
           title: fallback.title,
           text: fallback.message,
           source: 'rule_fallback',
-          fallbackReason: response.message || 'Gemini API is not configured or temporarily unreachable.'
+          fallbackReason: response.message || 'The AI service is unavailable.'
         };
         setMessages(prev => [...prev, fallbackMsg]);
       }
     } catch (err) {
       console.error('[Assistant Route Error]', err);
-      setLastError('Network error contacting assistant backend. Showing rule-based guidance.');
-      const fallback = getRuleEngineFallback(text);
+      setLastError('Network error contacting the assistant backend.');
+      const fallback = getOfflineMessage();
       setMessages(prev => [
         ...prev,
         {
@@ -323,7 +287,7 @@ isSendingRef.current = true;
                   alignItems: 'center',
                   gap: '4px'
                 }}>
-                  ● Rule Engine Active (Add GEMINI_API_KEY in .env)
+                  ● Basic mode (AI not configured)
                 </span>
               )}
             </div>
@@ -474,7 +438,7 @@ isSendingRef.current = true;
                     gap: '6px'
                   }}>
                     <AlertCircle size={14} color="#D97706" style={{ flexShrink: 0 }} />
-                    <span><strong>Offline Rule Fallback:</strong> {msg.fallbackReason}</span>
+                    <span><strong>Basic mode (AI unavailable):</strong> {msg.fallbackReason}</span>
                   </div>
                 )}
 
@@ -493,7 +457,7 @@ isSendingRef.current = true;
                     marginBottom: '8px'
                   }}>
                     <Sparkles size={11} color="#059669" />
-                    <span>Gemini AI ({msg.model || 'gemini-2.5-flash'})</span>
+                    <span>Gemini AI{msg.model ? ` (${msg.model})` : ''}</span>
                   </div>
                 )}
 
