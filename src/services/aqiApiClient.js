@@ -124,6 +124,42 @@ export function pickBestStation(apiResponse) {
 
   // Sort: prefer closest distance, then more pollutants, then fresher
   stations.sort((a, b) => {
+    // 1️⃣ Distance – known distance beats unknown; shorter is better
+    const aHasDist = a.distanceKm !== null && a.distanceKm !== undefined;
+    const bHasDist = b.distanceKm !== null && b.distanceKm !== undefined;
+    if (aHasDist && !bHasDist) return -1;
+    if (!aHasDist && bHasDist) return 1;
+    if (aHasDist && bHasDist && a.distanceKm !== b.distanceKm) {
+      return a.distanceKm - b.distanceKm;
+    }
+
+    // 2️⃣ AQI – prefer stations with a computed AQI
+    if (a.aqi !== null && b.aqi === null) return -1;
+    if (a.aqi === null && b.aqi !== null) return 1;
+
+    // 3️⃣ Pollutant coverage – more pollutants measured is better
+    const countDiff = (b.pollutantCount || 0) - (a.pollutantCount || 0);
+    if (countDiff !== 0) return countDiff;
+
+    // 4️⃣ Freshness – fresher data (lower ageMinutes) wins
+    return (a.freshness?.ageMinutes ?? 999) - (b.freshness?.ageMinutes ?? 999);
+  });
+    // 1️⃣ Distance – known distance beats unknown; shorter is better
+    const aHasDist = a.distanceKm !== null && a.distanceKm !== undefined;
+    const bHasDist = b.distanceKm !== null && b.distanceKm !== undefined;
+    if (aHasDist && !bHasDist) return -1;
+    if (!aHasDist && bHasDist) return 1;
+    if (aHasDist && bHasDist && a.distanceKm !== b.distanceKm) {
+      return a.distanceKm - b.distanceKm;
+    }
+
+    // 2️⃣ Pollutant coverage – more pollutants measured is better
+    const countDiff = (b.pollutantCount || 0) - (a.pollutantCount || 0);
+    if (countDiff !== 0) return countDiff;
+
+    // 3️⃣ Freshness – fresher data (lower ageMinutes) wins
+    return (a.freshness?.ageMinutes ?? 999) - (b.freshness?.ageMinutes ?? 999);
+  });
     // Prefer stations with computed AQI
     if (a.aqi !== null && b.aqi === null) return -1;
     if (a.aqi === null && b.aqi !== null) return 1;
