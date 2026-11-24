@@ -116,15 +116,19 @@ export function pickBestStation(apiResponse) {
     return null;
   }
 
+  // Filter stations with usable freshness
   const stations = apiResponse.stations.filter(
     s => s.freshness && s.freshness.status !== 'unavailable'
   );
 
   if (stations.length === 0) return null;
 
-  // Sort: prefer closest distance, then more pollutants, then fresher
+  // Sort by priority:
+  // 1. Shortest known distance (stations without distance are placed after those with distance)
+  // 2. AQI availability (prefer stations with a computed AQI)
+  // 3. Pollutant count (more pollutants measured is better)
+  // 4. Freshness (lower ageMinutes is fresher)
   stations.sort((a, b) => {
-    // 1️⃣ Distance – known distance beats unknown; shorter is better
     const aHasDist = a.distanceKm !== null && a.distanceKm !== undefined;
     const bHasDist = b.distanceKm !== null && b.distanceKm !== undefined;
     if (aHasDist && !bHasDist) return -1;
@@ -133,47 +137,15 @@ export function pickBestStation(apiResponse) {
       return a.distanceKm - b.distanceKm;
     }
 
-    // 2️⃣ AQI – prefer stations with a computed AQI
+    // AQI availability
     if (a.aqi !== null && b.aqi === null) return -1;
     if (a.aqi === null && b.aqi !== null) return 1;
 
-    // 3️⃣ Pollutant coverage – more pollutants measured is better
+    // Pollutant coverage
     const countDiff = (b.pollutantCount || 0) - (a.pollutantCount || 0);
     if (countDiff !== 0) return countDiff;
 
-    // 4️⃣ Freshness – fresher data (lower ageMinutes) wins
-    return (a.freshness?.ageMinutes ?? 999) - (b.freshness?.ageMinutes ?? 999);
-  });
-    // 1️⃣ Distance – known distance beats unknown; shorter is better
-    const aHasDist = a.distanceKm !== null && a.distanceKm !== undefined;
-    const bHasDist = b.distanceKm !== null && b.distanceKm !== undefined;
-    if (aHasDist && !bHasDist) return -1;
-    if (!aHasDist && bHasDist) return 1;
-    if (aHasDist && bHasDist && a.distanceKm !== b.distanceKm) {
-      return a.distanceKm - b.distanceKm;
-    }
-
-    // 2️⃣ Pollutant coverage – more pollutants measured is better
-    const countDiff = (b.pollutantCount || 0) - (a.pollutantCount || 0);
-    if (countDiff !== 0) return countDiff;
-
-    // 3️⃣ Freshness – fresher data (lower ageMinutes) wins
-    return (a.freshness?.ageMinutes ?? 999) - (b.freshness?.ageMinutes ?? 999);
-  });
-    // Prefer stations with computed AQI
-    if (a.aqi !== null && b.aqi === null) return -1;
-    if (a.aqi === null && b.aqi !== null) return 1;
-
-    // Then by pollutant count (more is better)
-    const countDiff = (b.pollutantCount || 0) - (a.pollutantCount || 0);
-    if (countDiff !== 0) return countDiff;
-
-    // Then by distance (closer is better)
-    if (a.distanceKm !== null && b.distanceKm !== null) {
-      return a.distanceKm - b.distanceKm;
-    }
-
-    // Then by freshness (fresher is better)
+    // Freshness
     return (a.freshness?.ageMinutes ?? 999) - (b.freshness?.ageMinutes ?? 999);
   });
 
