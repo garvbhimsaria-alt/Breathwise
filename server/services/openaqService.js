@@ -174,9 +174,18 @@ export async function fetchLocationMeasurements(locationId) {
       lastUpdated: null
     }));
 
-    // Map measurements by sensor id (OpenAQ uses `sensorId` field)
+    // Determine where the actual measurement array lives. Newer OpenAQ responses wrap measurements inside the first result object's `measurements` field.
+    let measurements = [];
+    if (Array.isArray(latestJson.results) && latestJson.results.length > 0) {
+      const first = latestJson.results[0];
+      if (Array.isArray(first.measurements)) {
+        measurements = first.measurements; // nested array (current API shape)
+      } else {
+        measurements = latestJson.results; // fallback to flat array (legacy shape)
+      }
+    }
+    // Map measurements by sensor id (OpenAQ uses `sensorId` or `sensorsId`)
     const measBySensor = new Map();
-    const measurements = latestJson.results || [];
     for (const m of measurements) {
       const sid = m.sensorsId ?? m.sensorId;
       if (sid != null) {
@@ -193,7 +202,8 @@ export async function fetchLocationMeasurements(locationId) {
       if (meas) {
         s.lastValue   = meas.value;
         s.lastUpdated = meas.timestamp;
-        s.unit        = meas.unit; // overwrite if needed
+        // unit stays from sensor metadata; do NOT overwrite with meas.unit
+
       }
     }
 
