@@ -49,7 +49,6 @@ Always return a valid JSON object matching this schema:
 /** Formats structured application context into a concise prompt string for Gemini. */
 export function buildContextPrompt({ aqiContext, userProfile, engineRecommendations }) {
   const parts = [];
-
   // 1. Air Quality Context
   parts.push('=== CURRENT AIR QUALITY CONTEXT ===');
   if (!aqiContext || !aqiContext.isValidAqi) {
@@ -67,8 +66,7 @@ export function buildContextPrompt({ aqiContext, userProfile, engineRecommendati
     if (aqiContext.lastUpdated) parts.push(`Data Freshness: ${aqiContext.lastUpdated}`);
     if (aqiContext.isStale) parts.push('Warning: Data is older than 2 hours (outdated/stale). Advise heightened caution.');
   }
-
-  // 2. User Lifestyle & Household Context
+  // 2. User Profile & Lifestyle
   parts.push('\n=== USER PROFILE & LIFESTYLE CONTEXT ===');
   if (userProfile) {
     if (userProfile.name) parts.push(`User Name: ${userProfile.name}`);
@@ -81,8 +79,7 @@ export function buildContextPrompt({ aqiContext, userProfile, engineRecommendati
   } else {
     parts.push('Default profile: General urban commuter.');
   }
-
-  // 3. Decision Engine Authority & Rules
+  // 3. Decision Engine Recommendations
   parts.push('\n=== DECISION ENGINE AUTHORITATIVE RECOMMENDATIONS ===');
   if (Array.isArray(engineRecommendations) && engineRecommendations.length > 0) {
     engineRecommendations.forEach((rec, idx) => {
@@ -94,7 +91,6 @@ export function buildContextPrompt({ aqiContext, userProfile, engineRecommendati
   } else {
     parts.push('Decision Engine: Standard CPCB precautionary guidance active.');
   }
-
   return parts.join('\n');
 }
 
@@ -117,7 +113,7 @@ export function sanitizeConversationHistory(history, maxTurns = 8) {
 export function parseStructuredResponse(rawText) {
   if (!rawText || typeof rawText !== 'string') {
     return {
-      message: 'I received your question but encountered an empty response. Please try asking again.',
+      message: 'I received your question but encountered an empty response. Please try again.',
       recommendations: [],
       reasoning: 'Empty response returned from model.',
       alternatives: [],
@@ -174,27 +170,51 @@ export async function generateAssistantResponse({
   engineRecommendations = [],
   timeoutMs = 15000
 }) {
-  if (!isGeminiConfigured()) {
-    return { status: 'fallback', error: 'GEMINI_API_KEY_MISSING', message: 'Gemini API key is not configured on the server. To enable Gemini AI, set GEMINI_API_KEY in your .env file.', data: null };
-  }
-
+  // Basic validation
   const cleanMessage = String(message || '').trim();
   if (!cleanMessage) {
     return { status: 'error', error: 'EMPTY_MESSAGE', message: 'Please provide a non‑empty question or message.', data: null };
   }
   const boundedMessage = cleanMessage.slice(0, 1000);
 
+  // Shortcut for current air quality queries – works without Gemini key
+  if (/current.*air.*quality/i.test(boundedMessage)) {
+    const ctx = aqiContext || {};
+    const { station, distanceKm, isLive, isDemo, isStale, aqi, category } = ctx;
+    const label = isLive ? 'live' : isDemo ? 'demo' : isStale ? 'stale' : 'unavailable';
+    let replyMessage;
+    if (isLive || isDemo) {
+      const distStr = typeof distanceKm === 'number' ? `${distanceKm.toFixed(1)} km` : 'unknown distance';
+      const aqiStr = aqi != null ? `${aqi}` : 'unknown AQI';
+      const catStr = category || 'unknown category';
+      replyMessage = `Current AQI at ${station || 'the nearest station'} (≈ ${distStr} away) is ${aqiStr} (${catStr}). Data is ${label}.`;
+    } else {
+      replyMessage = 'AQI data for the nearest station is currently unavailable.';
+    }
+    return {
+      status: 'success',
+      model: 'fallback',
+      data: { message: replyMessage, recommendations: [], reasoning: 'Direct AQI lookup from cached context.', alternatives: [], limitations: `Data source: ${label}` },
+      timestamp: new Date().toISOString()
+    };
+  }
+
+  // Ensure Gemini API key is configured
+  if (!isGeminiConfigured()) {
+    return { status: 'fallback', error: 'GEMINI_API_KEY_MISSING', message: 'Gemini API key is not configured on the server. To enable Gemini AI, set GEMINI_API_KEY in your .env file.', data: null };
+  }
+
+  // Build Gemini request payload
   const contextBlock = buildContextPrompt({ aqiContext, userProfile, engineRecommendations });
   const sanitizedHistory = sanitizeConversationHistory(conversationHistory, 8);
   const contents = [
     ...sanitizedHistory,
     { role: 'user', parts: [{ text: `${contextBlock}\n\n=== USER QUESTION ===\n${boundedMessage}\n\nPlease respond in the required structured JSON format.` }] }
   ];
-
   const modelName = getGeminiModel();
   const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
-  // Overall deadline (20 s) – ensures total time does not exceed Render limits.
+  // Overall deadline (20 s)
   const OVERALL_DEADLINE_MS = 20000;
   const startTime = Date.now();
   const overallAbort = new AbortController();
@@ -211,9 +231,7 @@ export async function generateAssistantResponse({
     if (attemptTimeout < 500) break;
 
     const attemptAbort = new AbortController();
-    const abortSignal = attemptAbort.signal;
     overallAbort.signal.addEventListener('abort', () => attemptAbort.abort());
-
     let attemptTimerId;
     try {
       const timeoutPromise = new Promise((_, reject) => {
@@ -224,7 +242,6 @@ export async function generateAssistantResponse({
           reject(err);
         }, attemptTimeout);
       });
-
       const apiPromise = ai.models.generateContent({
         model: modelName,
         contents,
@@ -234,9 +251,8 @@ export async function generateAssistantResponse({
           temperature: 0.4,
           maxOutputTokens: 1024
         },
-        signal: abortSignal
+        signal: attemptAbort.signal
       });
-
       const response = await Promise.race([apiPromise, timeoutPromise]);
       if (attemptTimerId) clearTimeout(attemptTimerId);
       clearTimeout(overallTimer);
@@ -247,8 +263,8 @@ export async function generateAssistantResponse({
       if (attemptTimerId) clearTimeout(attemptTimerId);
       attemptAbort.abort();
 
-      const isTransient = (err.status >= 500 || err.code === 'UNAVAILABLE' || err.name === 'TimeoutError' || err.message?.includes('Network'));
-      const isAuthOrQuota = (err.status === 401 || err.status === 403 || err.message?.includes('API_KEY_INVALID') || err.message?.includes('UNAUTHENTICATED') || err.status === 429 || err.message?.includes('RESOURCE_EXHAUSTED'));
+      const isTransient = (err.status >= 500 || err.code === 'UNAVAILABLE' || err.name === 'TimeoutError' || (err.message && err.message.includes('Network')));
+      const isAuthOrQuota = (err.status === 401 || err.status === 403 || (err.message && (err.message.includes('API_KEY_INVALID') || err.message.includes('UNAUTHENTICATED'))) || err.status === 429 || (err.message && err.message.includes('RESOURCE_EXHAUSTED')));
 
       if (isAuthOrQuota) {
         const errorCode = err.status === 429 ? 'RATE_LIMITED' : 'AUTH_FAILED';
@@ -268,12 +284,23 @@ export async function generateAssistantResponse({
         }
       }
 
+      // Timeout specific fallback (covers greetings, thank you, etc.)
+      if (err.name === 'TimeoutError' || err.code === 'TIMEOUT') {
+        const lower = boundedMessage.toLowerCase();
+        if (/\b(hello|hi|hey)\b/.test(lower)) {
+          return { status: 'success', model: 'fallback', data: { message: "Hello! I'm BreatheWise, your air‑quality companion. How can I help you today?", recommendations: [], reasoning: 'Greeting response.', alternatives: [], limitations: '' }, timestamp: new Date().toISOString() };
+        }
+        if (/thank/.test(lower)) {
+          return { status: 'success', model: 'fallback', data: { message: "You're welcome! Stay safe and breathe easy.", recommendations: [], reasoning: 'Polite acknowledgement.', alternatives: [], limitations: '' }, timestamp: new Date().toISOString() };
+        }
+        // Generic timeout fallback
+        return { status: 'fallback', error: 'TIMEOUT', message: 'The AI assistant request timed out. Please check your network and retry.', data: null };
+      }
+
+      // Other service errors
       let errorCode = 'GENAI_ERROR';
       let userFriendlyMsg = 'The AI assistant is temporarily unavailable. Please try again.';
-      if (err.name === 'TimeoutError' || err.code === 'TIMEOUT') {
-        errorCode = 'TIMEOUT';
-        userFriendlyMsg = 'The AI assistant request timed out. Please check your network and retry.';
-      } else if (err.status >= 500) {
+      if (err.status >= 500) {
         if (err.status === 503) {
           errorCode = 'SERVICE_UNAVAILABLE';
           userFriendlyMsg = 'Google Gemini service is experiencing high demand. Please retry shortly.';
