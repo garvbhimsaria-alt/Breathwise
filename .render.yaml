@@ -1,0 +1,20 @@
+services:
+  - type: web
+    name: breathewise-backend
+    env: node
+    region: oregon
+    plan: free
+    rootDir: server
+    buildCommand: npm install
+    startCommand: node index.js
+    envVars:
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: GEMINI_MODEL
+        sync: false
+      - key: DATA_GOV_IN_API_KEY
+        sync: false
+      - key: OPENAQ_API_KEY
+        sync: false
+      - key: CLIENT_ORIGIN
+        sync: false
