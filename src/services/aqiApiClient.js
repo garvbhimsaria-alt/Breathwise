@@ -122,7 +122,7 @@ export function pickBestStation(apiResponse) {
 
   if (stations.length === 0) return null;
 
-  // Sort: prefer more pollutants, then closer distance, then fresher
+  // Sort: prefer closest distance, then more pollutants, then fresher
   stations.sort((a, b) => {
     // Prefer stations with computed AQI
     if (a.aqi !== null && b.aqi === null) return -1;

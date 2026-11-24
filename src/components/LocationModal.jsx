@@ -109,7 +109,7 @@ export default function LocationModal({
           message: msg
         });
       },
-      { timeout: 8000, enableHighAccuracy: false }
+      { timeout: 20000, enableHighAccuracy: true, maximumAge: 0 }
     );
   };
 
