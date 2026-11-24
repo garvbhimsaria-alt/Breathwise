@@ -305,9 +305,11 @@ export async function generateAssistantResponse({
         console.error(`[Gemini] model=${model} attempt=${attempt} status=${err?.status ?? '-'} name=${err?.name ?? '-'} msg=${String(err?.message || '').slice(0, 200)}`);
 
         if (isAuthOrQuota(err)) {
-          failureReason = err.status === 429
+          const isQuota = err.status === 429 || /RESOURCE_EXHAUSTED/.test(String(err?.message || ''));
+          failureReason = isQuota
             ? 'The AI service has reached its usage limit for now.'
             : 'The AI service could not be reached with the current server configuration.';
+          if (isQuota) break; // quota is per model: try the backup model before giving up
           return basicModeResult(boundedMessage, aqiContext, engineRecommendations, userProfile, failureReason);
         }
         failureReason = err?.status === 503
