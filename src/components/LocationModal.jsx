@@ -1,30 +1,108 @@
-import React, { useState } from 'react';
-import { 
-  MapPin, 
-  Navigation, 
-  X, 
-  Check, 
-  AlertCircle, 
+import React, { useState, useEffect, useMemo } from 'react';
+import {
+  Navigation,
+  X,
+  Check,
+  AlertCircle,
   Info,
   Search,
-  Sparkles,
-  Radio
+  RefreshCw
 } from 'lucide-react';
 import { SAMPLE_CITIES } from '../data/mockData';
 import { classifyAqi } from '../engine';
-import { fetchAqiNearby, pickBestStation, stationToCityFormat } from '../services/aqiApiClient';
+import {
+  fetchAqiNearby,
+  fetchCityList,
+  pickBestStation,
+  stationToCityFormat
+} from '../services/aqiApiClient';
 
-export default function LocationModal({ 
-  isOpen, 
-  onClose, 
-  currentCity, 
-  onSelectCity 
+const MAX_VISIBLE = 60;
+// Only used when the backend cannot supply the live city list.
+const DEMO_FALLBACK_IDS = ['delhi', 'mumbai', 'bengaluru'];
+
+const formatPollutant = (id) => {
+  if (!id) return null;
+  const v = String(id).toLowerCase();
+  if (v === 'pm25') return 'PM2.5';
+  if (v === 'pm10') return 'PM10';
+  return v.toUpperCase();
+};
+
+/** Turns a row of the live city list into the city object the rest of the app uses. */
+function liveItemToCity(item) {
+  return {
+    id: `live-${item.id}`,
+    name: item.city,
+    region: item.state || 'India',
+    aqi: item.aqi,
+    pm25: item.pm25,
+    primaryPollutant: formatPollutant(item.dominantPollutant) || 'PM2.5',
+    lastUpdated: item.lastUpdated || 'Unknown',
+    dataSource: 'CPCB via data.gov.in',
+    dataType: 'live_measurement',
+    isLiveData: true,
+    // Exact CPCB names, so the dashboard fetch hits the right city
+    liveQuery: { city: item.city, state: item.state }
+  };
+}
+
+export default function LocationModal({
+  isOpen,
+  onClose,
+  currentCity,
+  onSelectCity
 }) {
   const [geoState, setGeoState] = useState({
     status: 'idle', // 'idle' | 'requesting' | 'granted' | 'denied' | 'unsupported'
     message: ''
   });
   const [searchQuery, setSearchQuery] = useState('');
+  const [showAll, setShowAll] = useState(false);
+  const [cityList, setCityList] = useState({ status: 'idle', cities: [], error: null, fetchedAt: null });
+
+  const loadCities = async () => {
+    setCityList((prev) => ({ ...prev, status: 'loading', error: null }));
+    const result = await fetchCityList();
+    if (result.error || !result.cities || result.cities.length === 0) {
+      setCityList({ status: 'error', cities: [], error: result.error || 'No cities returned', fetchedAt: null });
+    } else {
+      setCityList({ status: 'ready', cities: result.cities, error: null, fetchedAt: result.fetchedAt || null });
+    }
+  };
+
+  // Load the live city list whenever the picker opens (cached by the client for 10 min)
+  useEffect(() => {
+    if (isOpen && cityList.status !== 'ready' && cityList.status !== 'loading') {
+      loadCities();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen]);
+
+  const rows = useMemo(() => {
+    if (cityList.status === 'ready') {
+      return cityList.cities.map((item) => ({ key: item.id, item, city: liveItemToCity(item), demo: false }));
+    }
+    if (cityList.status === 'error') {
+      return SAMPLE_CITIES.filter((c) => DEMO_FALLBACK_IDS.includes(c.id)).map((c) => ({
+        key: c.id,
+        item: null,
+        city: c,
+        demo: true
+      }));
+    }
+    return [];
+  }, [cityList]);
+
+  const filteredRows = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return rows;
+    return rows.filter(({ city }) =>
+      city.name.toLowerCase().includes(q) || String(city.region || '').toLowerCase().includes(q)
+    );
+  }, [rows, searchQuery]);
+
+  const visibleRows = showAll ? filteredRows : filteredRows.slice(0, MAX_VISIBLE);
 
   if (!isOpen) return null;
 
@@ -44,14 +122,18 @@ export default function LocationModal({
 
     navigator.geolocation.getCurrentPosition(
       async (position) => {
-        // Location permitted!
-        const { latitude, longitude } = position.coords;
+        const { latitude, longitude, accuracy } = position.coords;
         setGeoState({
           status: 'requesting',
           message: `Location received (${latitude.toFixed(2)}°, ${longitude.toFixed(2)}°). Scanning for nearby monitoring stations...`
         });
 
-        // 1. Try real live station lookup via backend proxy
+        // Desktop browsers often give an approximate location (Wi-Fi/IP based)
+        const accuracyNote = accuracy && accuracy > 3000
+          ? ` Your device reported an approximate location (±${(accuracy / 1000).toFixed(1)} km), so the nearest station may differ from the one closest to you.`
+          : '';
+
+        // Real live station lookup via backend (nearest CPCB station across India)
         let chosenCity = null;
         try {
           const liveResult = await fetchAqiNearby(latitude, longitude);
@@ -60,34 +142,28 @@ export default function LocationModal({
             chosenCity = stationToCityFormat(best, {
               id: `geo-${best.stationId || 'station'}`,
               name: best.city || best.station,
-              region: `Station ${best.distanceKm ? `${best.distanceKm} km away` : 'Nearby'}`
+              region: `Station ${best.distanceKm != null ? `${best.distanceKm} km away` : 'Nearby'}`
             });
+            const distance = best.distanceKm != null ? `${best.distanceKm} km away` : 'nearby';
+            const widened = liveResult.widenedSearch
+              ? ' No station was found within 50 km, so this is the nearest one available.'
+              : '';
             setGeoState({
               status: 'granted',
-              message: `Connected to live station: ${best.station} (${best.distanceKm ? `${best.distanceKm} km away` : 'nearby'}).`
+              message: `Connected to live station: ${best.station} (${distance}).${widened}${accuracyNote}`
             });
           }
         } catch (e) {
-          // Live lookup error; proceed to demo fallback
+          // handled below
         }
 
-        // 2. Fallback to nearest demo city if backend unavailable or no stations found
         if (!chosenCity) {
-          let bestMatch = SAMPLE_CITIES[0]; // default Delhi
-          if (latitude < 16) {
-            bestMatch = SAMPLE_CITIES.find(c => c.id === 'bengaluru') || SAMPLE_CITIES[0];
-          } else if (latitude < 24) {
-            bestMatch = SAMPLE_CITIES.find(c => c.id === 'mumbai') || SAMPLE_CITIES[0];
-          } else if (latitude > 45) {
-            bestMatch = SAMPLE_CITIES.find(c => c.id === 'london') || SAMPLE_CITIES[0];
-          } else if (latitude > 35 && longitude < -70) {
-            bestMatch = SAMPLE_CITIES.find(c => c.id === 'newyork') || SAMPLE_CITIES[0];
-          }
-          chosenCity = bestMatch;
+          // No fake mapping to a "nearest sample city": say plainly that live data was not found
           setGeoState({
-            status: 'granted',
-            message: `Location received (${latitude.toFixed(2)}°, ${longitude.toFixed(2)}°). Mapped to nearest sample observatory: ${bestMatch.name}.`
+            status: 'denied',
+            message: 'I could not find a live monitoring station for your location right now. Please search for your city below.'
           });
+          return;
         }
 
         setTimeout(() => {
@@ -96,13 +172,13 @@ export default function LocationModal({
         }, 1200);
       },
       (error) => {
-        let msg = 'Location permission was denied or unavailable. You can easily pick any location manually below!';
+        let msg = 'Location permission was denied or unavailable. You can pick your city manually below.';
         if (error.code === error.PERMISSION_DENIED) {
-          msg = 'Location access permission was declined. No problem! Simply choose your city manually from the list below.';
+          msg = 'Location access was declined. No problem. Search for your city below.';
         } else if (error.code === error.POSITION_UNAVAILABLE) {
-          msg = 'Location signal currently unavailable. Please pick a location manually below.';
+          msg = 'Location signal currently unavailable. Please search for your city below.';
         } else if (error.code === error.TIMEOUT) {
-          msg = 'Location request timed out. Please choose manually.';
+          msg = 'Location request timed out. Please search for your city below.';
         }
         setGeoState({
           status: 'denied',
@@ -112,11 +188,6 @@ export default function LocationModal({
       { timeout: 20000, enableHighAccuracy: true, maximumAge: 0 }
     );
   };
-
-  const filteredCities = SAMPLE_CITIES.filter(city => 
-    city.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    city.region.toLowerCase().includes(searchQuery.toLowerCase())
-  );
 
   return (
     <div style={{
@@ -133,7 +204,7 @@ export default function LocationModal({
       zIndex: 100,
       padding: '16px'
     }}>
-      <div 
+      <div
         className="card animate-fade-in"
         style={{
           width: '100%',
@@ -168,6 +239,7 @@ export default function LocationModal({
           </div>
           <button
             onClick={onClose}
+            aria-label="Close"
             style={{
               padding: '6px',
               borderRadius: '50%',
@@ -183,7 +255,7 @@ export default function LocationModal({
 
         {/* Content Area */}
         <div style={{ padding: '20px 24px', overflowY: 'auto' }}>
-          
+
           {/* Geolocation Button */}
           <div style={{ marginBottom: '18px' }}>
             <button
@@ -200,13 +272,12 @@ export default function LocationModal({
             >
               <Navigation size={18} color="#8DE0C3" />
               <span>
-                {geoState.status === 'requesting' 
-                  ? 'Requesting Browser Location...' 
+                {geoState.status === 'requesting'
+                  ? 'Requesting Browser Location...'
                   : 'Use My Current Location'}
               </span>
             </button>
 
-            {/* Geolocation Feedback Message */}
             {geoState.status !== 'idle' && (
               <div style={{
                 marginTop: '10px',
@@ -242,22 +313,19 @@ export default function LocationModal({
             letterSpacing: '0.05em'
           }}>
             <div style={{ flex: 1, height: '1px', backgroundColor: '#E2ECE9' }} />
-            <span>Or Select a Sample City</span>
+            <span>Or Search an Indian City</span>
             <div style={{ flex: 1, height: '1px', backgroundColor: '#E2ECE9' }} />
           </div>
 
           {/* Search Input */}
-          <div style={{
-            position: 'relative',
-            marginBottom: '14px'
-          }}>
+          <div style={{ position: 'relative', marginBottom: '14px' }}>
             <Search size={16} color="#7E989C" style={{ position: 'absolute', left: '12px', top: '12px' }} />
             <input
               type="text"
-              placeholder="Search cities..."
+              placeholder={cityList.status === 'ready' ? `Search ${cityList.cities.length} cities or states...` : 'Search cities...'}
               aria-label="Search cities"
               value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
+              onChange={(e) => { setSearchQuery(e.target.value); setShowAll(false); }}
               style={{
                 width: '100%',
                 padding: '10px 12px 10px 36px',
@@ -271,17 +339,64 @@ export default function LocationModal({
             />
           </div>
 
+          {/* Loading / error states */}
+          {cityList.status === 'loading' && (
+            <div style={{ padding: '16px', textAlign: 'center', fontSize: '0.85rem', color: '#6B878D' }}>
+              Loading live cities from CPCB… this can take up to a minute if the server is waking up.
+            </div>
+          )}
+
+          {cityList.status === 'error' && (
+            <div style={{
+              marginBottom: '12px',
+              padding: '10px 14px',
+              borderRadius: '10px',
+              fontSize: '0.8rem',
+              backgroundColor: '#FFFBEB',
+              color: '#92400E',
+              border: '1px solid #FDE68A',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: '10px'
+            }}>
+              <span>Could not load the live city list ({cityList.error}). Showing a few demo cities instead.</span>
+              <button
+                onClick={loadCities}
+                className="btn"
+                style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.75rem', cursor: 'pointer', flexShrink: 0 }}
+              >
+                <RefreshCw size={12} /> Retry
+              </button>
+            </div>
+          )}
+
           {/* City Selection List */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-            {filteredCities.map((city) => {
-              const aqiInfo = classifyAqi(city.aqi);
+            {visibleRows.map(({ key, item, city, demo }) => {
+              const hasAqi = city.aqi != null;
+              const aqiInfo = classifyAqi(hasAqi ? city.aqi : null);
               const isSelected = currentCity?.id === city.id;
-              const displayAqi = city.aqi != null ? city.aqi : 'N/A';
-              const displayPm25 = city.pm25 != null ? `${city.pm25} µg/m³` : 'Data Offline';
+              const displayAqi = hasAqi ? city.aqi : 'N/A';
+
+              let pill;
+              if (demo) {
+                pill = 'Demo data';
+              } else if (!hasAqi) {
+                pill = 'Limited data';
+              } else if (city.pm25 != null) {
+                pill = `PM2.5: ${city.pm25} µg/m³`;
+              } else {
+                pill = `${item.stationCount} station${item.stationCount === 1 ? '' : 's'}`;
+              }
+
+              const subtitle = demo
+                ? `${city.region} • ${aqiInfo.category}`
+                : `${city.region} • ${hasAqi ? aqiInfo.category : 'No AQI (not enough pollutant data)'}`;
 
               return (
                 <div
-                  key={city.id}
+                  key={key}
                   onClick={() => {
                     onSelectCity(city);
                     onClose();
@@ -319,7 +434,7 @@ export default function LocationModal({
                         {city.name}
                       </div>
                       <div style={{ fontSize: '0.75rem', color: '#6B878D' }}>
-                        {city.region} • {aqiInfo.category}
+                        {subtitle}
                       </div>
                     </div>
                   </div>
@@ -334,7 +449,7 @@ export default function LocationModal({
                       fontWeight: 600,
                       border: `1px solid ${aqiInfo.borderColor}`
                     }}>
-                      {city.primaryPollutant}: {displayPm25}
+                      {pill}
                     </span>
                     {isSelected && (
                       <Check size={18} color="#102E35" style={{ marginLeft: '4px' }} />
@@ -343,9 +458,25 @@ export default function LocationModal({
                 </div>
               );
             })}
+
+            {cityList.status !== 'loading' && filteredRows.length === 0 && (
+              <div style={{ padding: '16px', textAlign: 'center', fontSize: '0.85rem', color: '#6B878D' }}>
+                No monitored city matches "{searchQuery}". Only cities with a CPCB monitoring station are listed. Try a nearby larger city, or use your current location.
+              </div>
+            )}
+
+            {!showAll && filteredRows.length > MAX_VISIBLE && (
+              <button
+                onClick={() => setShowAll(true)}
+                className="btn"
+                style={{ alignSelf: 'center', fontSize: '0.8rem', cursor: 'pointer', padding: '8px 14px' }}
+              >
+                Show all {filteredRows.length} cities
+              </button>
+            )}
           </div>
 
-          {/* Prototype Disclosure Callout */}
+          {/* Data notice */}
           <div style={{
             marginTop: '20px',
             padding: '12px',
@@ -359,7 +490,15 @@ export default function LocationModal({
           }}>
             <Info size={16} color="#20464A" style={{ flexShrink: 0, marginTop: '2px' }} />
             <div>
-              <strong>Sample Data Notice:</strong> All cities use curated sample scenarios reflecting real-world smog patterns, powered by our deterministic CPCB Decision Engine with clearly labeled demonstration data.
+              {cityList.status === 'ready' ? (
+                <>
+                  <strong>Live data:</strong> CPCB monitoring stations via data.gov.in. A city's AQI here is the average of its stations' real-time readings, so it can differ from the official 24-hour CPCB figure. Only cities with a monitoring station are listed.
+                </>
+              ) : (
+                <>
+                  <strong>Demo data:</strong> the live city list is not available, so the values shown are sample data and not real measurements.
+                </>
+              )}
             </div>
           </div>
         </div>

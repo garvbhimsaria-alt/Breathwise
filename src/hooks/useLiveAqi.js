@@ -55,25 +55,19 @@ export function useLiveAqi(demoCity) {
   const refreshTimerRef = useRef(null);
 
   const fetchLive = useCallback(async (cityObj) => {
-    // 1. Health check
-    const health = await checkBackendHealth();
-    setBackendStatus(health);
-
-    if (!health.reachable) {
-      setDataMode('demo');
-      setLiveCity(null);
-      setLastFetchError('Backend server is offline. Showing demonstration data.');
-      return;
-    }
+    // 1. Health check runs alongside the data request for status display only.
+    //    It no longer blocks live data (a missing /api/health route must not force demo mode).
+    checkBackendHealth().then(setBackendStatus).catch(() => {});
 
     // 2. Determine query parameters
     const cityId = cityObj?.id || 'delhi';
     const isGeoStation = cityId.startsWith('geo-');
 
-    // For geo stations, use the city name or fallback to Delhi
-    // For known cities, use the city query map
-    const cityName = CITY_QUERY_MAP[cityId]
-      || (isGeoStation ? (cityObj?.name || 'Delhi') : (cityObj?.name || 'Delhi'));
+    // Cities picked from the live list carry their exact CPCB city + state
+    const liveQuery = cityObj?.liveQuery || null;
+    const cityName = liveQuery?.city
+      || CITY_QUERY_MAP[cityId]
+      || (cityObj?.name || 'Delhi');
     const coords = CITY_COORDS[cityId]
       || (isGeoStation && cityObj?.liveStationCoords
         ? { lat: cityObj.liveStationCoords.lat, lon: cityObj.liveStationCoords.lon }
@@ -89,6 +83,7 @@ export function useLiveAqi(demoCity) {
     }
 
     const result = await fetchAqiForCity(cityName, {
+      state: liveQuery?.state,
       lat: coords?.lat,
       lon: coords?.lon
     });
@@ -96,7 +91,8 @@ export function useLiveAqi(demoCity) {
     if (result.error || result.dataType === 'unavailable') {
       setDataMode('demo');
       setLiveCity(null);
-      setLastFetchError(result.error || result.message || 'No data available from providers.');
+      const detail = result.errors ? ` (${[result.errors.cpcb, result.errors.openaq].filter(Boolean).join('; ')})` : '';
+      setLastFetchError(`${result.error || result.message || 'No data available from providers.'}${detail}`);
       return;
     }
 
@@ -132,6 +128,7 @@ export function useLiveAqi(demoCity) {
     const cityId = demoCity.id || '';
     const isIndianCity = !!CITY_QUERY_MAP[cityId]
       || cityId.startsWith('geo-')
+      || cityId.startsWith('live-')
       || demoCity.isLiveData === true;
     if (!isIndianCity) {
       setDataMode('demo');

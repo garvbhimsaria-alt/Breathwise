@@ -12,11 +12,25 @@
 const SERVER_URL = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_API_BASE_URL) || '';
 const API_BASE = `${SERVER_URL}/api/aqi`;
 
+// Render free instances can take a while to wake up, so allow a generous timeout.
+const REQUEST_TIMEOUT_MS = 45000;
+
+async function fetchJson(url, timeoutMs = REQUEST_TIMEOUT_MS) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { signal: controller.signal, headers: { Accept: 'application/json' } });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 /**
  * Fetch air quality for a city name (primarily CPCB, with OpenAQ fallback).
  *
  * @param {string} city – City name, e.g. "Delhi"
  * @param {Object} [opts]
+ * @param {string} [opts.state] – Optional state, to tell apart same-named cities
  * @param {number} [opts.lat] – Optional latitude for OpenAQ fallback
  * @param {number} [opts.lon] – Optional longitude for OpenAQ fallback
  * @returns {Promise<Object>}
@@ -24,12 +38,11 @@ const API_BASE = `${SERVER_URL}/api/aqi`;
 export async function fetchAqiForCity(city, opts = {}) {
   try {
     const params = new URLSearchParams({ city });
+    if (opts.state) params.set('state', opts.state);
     if (opts.lat) params.set('lat', opts.lat);
     if (opts.lon) params.set('lon', opts.lon);
 
-    const response = await fetch(`${API_BASE}/city?${params.toString()}`, {
-      headers: { 'Accept': 'application/json' }
-    });
+    const response = await fetchJson(`${API_BASE}/city?${params.toString()}`);
 
     if (!response.ok) {
       return { error: `Backend returned HTTP ${response.status}`, dataType: 'unavailable' };
@@ -54,9 +67,7 @@ export async function fetchAqiForCity(city, opts = {}) {
  */
 export async function fetchAqiNearby(lat, lon) {
   try {
-    const response = await fetch(`${API_BASE}/nearby?lat=${lat}&lon=${lon}`, {
-      headers: { 'Accept': 'application/json' }
-    });
+    const response = await fetchJson(`${API_BASE}/nearby?lat=${lat}&lon=${lon}`);
 
     if (!response.ok) {
       return { error: `Backend returned HTTP ${response.status}`, dataType: 'unavailable' };
@@ -65,6 +76,38 @@ export async function fetchAqiNearby(lat, lon) {
     return await response.json();
   } catch (err) {
     return { error: `Backend unreachable: ${err.message}`, dataType: 'unavailable' };
+  }
+}
+
+let cityListCache = null; // { at, data }
+const CITY_LIST_TTL_MS = 10 * 60 * 1000;
+
+/**
+ * Fetch every Indian city that has CPCB monitoring stations, with live AQI.
+ * Cached in memory for 10 minutes so reopening the picker is instant.
+ *
+ * @returns {Promise<{ cities: Array, fetchedAt?: string, error?: string }>}
+ */
+export async function fetchCityList() {
+  if (cityListCache && Date.now() - cityListCache.at < CITY_LIST_TTL_MS) {
+    return cityListCache.data;
+  }
+  try {
+    const response = await fetchJson(`${API_BASE}/cities`);
+    if (!response.ok) {
+      return { cities: [], error: `Backend returned HTTP ${response.status}` };
+    }
+    const json = await response.json();
+    if (!Array.isArray(json.cities)) {
+      return { cities: [], error: json.error || 'Unexpected response from backend' };
+    }
+    cityListCache = { at: Date.now(), data: json };
+    return json;
+  } catch (err) {
+    return {
+      cities: [],
+      error: err.name === 'AbortError' ? 'Backend took too long to respond' : `Backend unreachable: ${err.message}`
+    };
   }
 }
 
@@ -93,9 +136,7 @@ export async function fetchProviderStatus() {
  */
 export async function checkBackendHealth() {
   try {
-    const response = await fetch(`${SERVER_URL}/api/health`, {
-      headers: { 'Accept': 'application/json' }
-    });
+    const response = await fetchJson(`${SERVER_URL}/api/health`, 15000);
     if (!response.ok) return { status: 'error', reachable: false };
     const data = await response.json();
     return { ...data, reachable: true };
@@ -123,12 +164,23 @@ export function pickBestStation(apiResponse) {
 
   if (stations.length === 0) return null;
 
+  // City-level selection (no user coordinates): use the city-average entry when it has an AQI
+  const hasDistance = stations.some(s => s.distanceKm !== null && s.distanceKm !== undefined);
+  if (!hasDistance) {
+    const aggregate = stations.find(s => s.isCityAggregate && s.aqi !== null && s.aqi !== undefined);
+    if (aggregate) return aggregate;
+  }
+
+  // Prefer stations that actually have an overall AQI (a nearer station without one is skipped)
+  const withAqi = stations.filter(s => s.aqi !== null && s.aqi !== undefined);
+  const pool = withAqi.length > 0 ? withAqi : stations;
+
   // Sort by priority:
   // 1. Shortest known distance (stations without distance are placed after those with distance)
   // 2. AQI availability (prefer stations with a computed AQI)
   // 3. Pollutant count (more pollutants measured is better)
   // 4. Freshness (lower ageMinutes is fresher)
-  stations.sort((a, b) => {
+  pool.sort((a, b) => {
     const aHasDist = a.distanceKm !== null && a.distanceKm !== undefined;
     const bHasDist = b.distanceKm !== null && b.distanceKm !== undefined;
     if (aHasDist && !bHasDist) return -1;
@@ -149,7 +201,7 @@ export function pickBestStation(apiResponse) {
     return (a.freshness?.ageMinutes ?? 999) - (b.freshness?.ageMinutes ?? 999);
   });
 
-  return stations[0];
+  return pool[0];
 }
 
 /**
