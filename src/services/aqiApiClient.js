@@ -95,7 +95,13 @@ export async function fetchCityList() {
   try {
     const response = await fetchJson(`${API_BASE}/cities`);
     if (!response.ok) {
-      return { cities: [], error: `Backend returned HTTP ${response.status}` };
+      // The backend explains why in its JSON body (e.g. data.gov.in HTTP 403 or a timeout)
+      let detail = '';
+      try {
+        const body = await response.json();
+        if (body && body.error) detail = `: ${body.error}`;
+      } catch { /* body was not JSON, e.g. a gateway error page */ }
+      return { cities: [], error: `Backend returned HTTP ${response.status}${detail}` };
     }
     const json = await response.json();
     if (!Array.isArray(json.cities)) {

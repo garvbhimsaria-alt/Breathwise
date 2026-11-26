@@ -14,6 +14,13 @@ import { parseTimestamp } from '../utils/freshness.js';
 const RESOURCE_ID = '3b01bcb8-0b14-4abf-b6f2-c1bfd384ba69';
 const BASE_URL = `https://api.data.gov.in/resource/${RESOURCE_ID}`;
 
+/** Node's fetch reports every network failure as just "fetch failed"; the real reason is in err.cause. */
+function describeFetchError(err) {
+  const c = err && err.cause;
+  if (!c) return err.message;
+  return `${err.message} [${c.code || c.name || 'cause'}${c.message ? `: ${c.message}` : ''}]`;
+}
+
 // Simple in-memory cache: { key → { data, fetchedAt } }
 const cache = new Map();
 const CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes
@@ -110,7 +117,7 @@ export async function fetchCpcbData(city, options = {}) {
     if (err.name === 'AbortError') {
       return { error: 'data.gov.in request timed out (15s)', provider: 'data.gov.in' };
     }
-    return { error: `data.gov.in fetch failed: ${err.message}`, provider: 'data.gov.in' };
+    return { error: `data.gov.in fetch failed: ${describeFetchError(err)}`, provider: 'data.gov.in' };
   }
 }
 
@@ -228,7 +235,7 @@ async function fetchPage(apiKey, limit, offset) {
     return await response.json();
   } catch (err) {
     if (err.name === 'AbortError') throw new Error('data.gov.in request timed out (20s)');
-    throw err;
+    throw new Error(describeFetchError(err));
   } finally {
     clearTimeout(timer);
   }
