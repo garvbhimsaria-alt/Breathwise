@@ -12,8 +12,6 @@ services:
         sync: false
       - key: GEMINI_MODEL
         sync: false
-      - key: DATA_GOV_IN_API_KEY
-        sync: false
       - key: OPENAQ_API_KEY
         sync: false
       - key: CLIENT_ORIGIN

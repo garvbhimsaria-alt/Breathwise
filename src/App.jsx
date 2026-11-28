@@ -13,9 +13,59 @@ import { SAMPLE_CITIES, INITIAL_USER_PROFILE, SCENARIO_PRESETS } from './data/mo
 import { generateRecommendations, classifyAqi } from './engine';
 import { useLiveAqi } from './hooks/useLiveAqi';
 
+const CURRENT_CITY_STORAGE_KEY = 'breathewise_current_city';
+const START_CITY = {
+  id: 'delhi', name: 'Delhi', region: 'Delhi, India', aqi: null, pm25: null, pm10: null,
+  isLiveData: true, dataSource: 'OpenAQ v3', locationSource: 'manual',
+  liveQuery: { city: 'Delhi', state: 'Delhi', lat: 28.6139, lon: 77.2090 }
+};
+
+function loadSavedCity() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(CURRENT_CITY_STORAGE_KEY) || 'null');
+    if (!saved?.id) return START_CITY;
+    const sample = SAMPLE_CITIES.find(city => city.id === saved.id);
+    if (sample && !saved.liveQuery) {
+      const cityCoords = {
+        delhi: [28.6139,77.2090], mumbai: [19.0760,72.8777], bengaluru: [12.9716,77.5946],
+        kolkata: [22.5726,88.3639], chennai: [13.0827,80.2707], hyderabad: [17.3850,78.4867],
+        pune: [18.5204,73.8567], lucknow: [26.8467,80.9462]
+      }[sample.id];
+      return { ...sample, aqi: null, pm25: null, pm10: null, no2: null, o3: null, so2: null, co: null, nh3: null,
+        isLiveData: true, locationSource: 'manual', dataSource: 'OpenAQ v3',
+        liveQuery: cityCoords ? { city: sample.name, state: sample.region, lat: cityCoords[0], lon: cityCoords[1] } : null };
+    }
+    return {
+      id: saved.id,
+      name: saved.name || 'Selected city',
+      region: saved.region || 'India',
+      liveQuery: saved.liveQuery || null,
+      locationSource: saved.locationSource || 'manual',
+      isLiveData: saved.isLiveData === true,
+      liveStationCoords: saved.liveStationCoords || null,
+      aqi: null, pm25: null, pm10: null, no2: null, o3: null, so2: null, co: null, nh3: null,
+      dataSource: saved.dataSource || 'Live monitoring data'
+    };
+  } catch {
+    return START_CITY;
+  }
+}
+
+function saveCitySelection(city) {
+  try {
+    localStorage.setItem(CURRENT_CITY_STORAGE_KEY, JSON.stringify({
+      id: city.id, name: city.name, region: city.region,
+      liveQuery: city.liveQuery || null,
+      locationSource: city.locationSource || 'manual',
+      isLiveData: city.isLiveData === true,
+      liveStationCoords: city.liveStationCoords || null,
+      dataSource: city.dataSource || null
+    }));
+  } catch { /* Keep the location selection usable when storage is unavailable. */ }
+}
 export default function App() {
   const [activeTab, setActiveTab] = useState('dashboard');
-  const [currentCity, setCurrentCity] = useState(SAMPLE_CITIES[0]); // default Delhi NCR
+  const [currentCity, setCurrentCity] = useState(loadSavedCity);
   const [activeScenarioId, setActiveScenarioId] = useState('current');
   
   const [userProfile, setUserProfile] = useState(() => {
@@ -46,7 +96,7 @@ export default function App() {
 
   // ─── Live Data Hook ───────────────────────────────────────────
   // Attempts to fetch real air quality data from the backend.
-  // Falls back to demonstration mode when backend is unreachable.
+  // Keeps live readings unavailable when the backend is unreachable.
   const {
     liveCity,
     dataMode,
@@ -59,22 +109,27 @@ export default function App() {
   // When a scenario preset is active, always use that preset (simulation).
   // When 'current' is selected:
   //   - If live data is available → use live data
-  //   - Otherwise → use demo city data
+  //   - Otherwise → report unavailable live readings without substituting sample values
   const activePreset = SCENARIO_PRESETS.find(s => s.id === activeScenarioId);
   const isSimulated = activeScenarioId !== 'current';
 
   // The "base city" for the 'current' scenario:
-  // live data when available, demo data otherwise
-  const baseCity = (dataMode === 'live' && liveCity) ? liveCity : currentCity;
+  // live data when available, selected city metadata otherwise
+  const isSelectedLiveCity = currentCity?.isLiveData === true || currentCity?.id?.startsWith('live-') || currentCity?.id?.startsWith('geo-');
+  const liveUnavailable = isSelectedLiveCity && dataMode === 'error' && !isSimulated;
+  const livePending = isSelectedLiveCity && dataMode === 'loading' && !isSimulated;
+  const baseCity = (dataMode === 'live' && liveCity)
+    ? liveCity
+    : (liveUnavailable ? { ...currentCity, aqi: null, pm25: null, pm10: null, no2: null, o3: null, so2: null, co: null, nh3: null } : currentCity);
   const isLiveActive = dataMode === 'live' && liveCity && !isSimulated;
 
-  const rawAqi = isSimulated ? activePreset.aqi : baseCity.aqi;
+  const rawAqi = isSimulated ? activePreset.aqi : (liveUnavailable ? null : baseCity.aqi);
   const rawTimestamp = isSimulated && activePreset.timestamp ? activePreset.timestamp : null;
   
   // ─── Core Engine Invocation ───────────────────────────────────
   const engineOutput = generateRecommendations(rawAqi, userProfile, {
     timestamp: rawTimestamp,
-    isDemo: !isLiveActive,
+    isDemo: !isLiveActive && !liveUnavailable && !livePending,
     location: baseCity
   });
 
@@ -92,12 +147,15 @@ export default function App() {
     primaryPollutant: isSimulated ? activePreset.primaryPollutant : baseCity.primaryPollutant,
     isScenarioSimulated: isSimulated,
     scenarioId: isSimulated ? activePreset.id : 'current',
-    scenarioLabel: isSimulated ? activePreset.label : (isLiveActive ? 'Live Data' : 'Demo Sample'),
-    scenarioDesc: isSimulated ? activePreset.desc : (isLiveActive ? (baseCity.dataSource || 'Live Station') : currentCity.dataSource),
+    scenarioLabel: isSimulated ? activePreset.label : (isLiveActive ? 'Live Data' : (liveUnavailable ? 'Live data unavailable' : (livePending ? 'Loading live data' : 'Demo Sample'))),
+    scenarioDesc: isSimulated ? activePreset.desc : (isLiveActive ? (baseCity.dataSource || 'Live Station') : (liveUnavailable ? lastFetchError : currentCity.dataSource)),
     aqiResult: aqiResult,
     lastUpdatedText: isLiveActive ? (baseCity.lastUpdated || aqiResult.lastUpdatedText) : aqiResult.lastUpdatedText,
     // Live-data metadata for components
     dataMode: dataMode,
+    dataUnavailable: liveUnavailable,
+    dataLoading: livePending,
+    dataError: liveUnavailable ? lastFetchError : null,
     isLiveData: isLiveActive,
     liveStation: isLiveActive ? baseCity.liveStation : null,
     liveAqiLabel: isLiveActive ? baseCity.liveAqiLabel : null,
@@ -118,7 +176,16 @@ export default function App() {
     if (newProfile.cityId && newProfile.cityId !== currentCity.id) {
       const match = SAMPLE_CITIES.find(c => c.id === newProfile.cityId);
       if (match) {
-        setCurrentCity(match);
+        const cityCoords = {
+          delhi: [28.6139,77.2090], mumbai: [19.0760,72.8777], bengaluru: [12.9716,77.5946],
+          kolkata: [22.5726,88.3639], chennai: [13.0827,80.2707], hyderabad: [17.3850,78.4867],
+          pune: [18.5204,73.8567], lucknow: [26.8467,80.9462]
+        }[match.id];
+        const liveSelection={...match,aqi:null,pm25:null,pm10:null,no2:null,o3:null,so2:null,co:null,nh3:null,
+          isLiveData:true,dataSource:'OpenAQ v3',locationSource:'manual',
+          liveQuery:cityCoords?{city:match.name,state:match.region,lat:cityCoords[0],lon:cityCoords[1]}:null};
+        setCurrentCity(liveSelection);
+        saveCitySelection(liveSelection);
         setActiveScenarioId('current');
       }
     }
@@ -126,6 +193,7 @@ export default function App() {
 
   const handleSelectCity = (city) => {
     setCurrentCity(city);
+    saveCitySelection(city);
     setActiveScenarioId('current');
     setUserProfile(prev => ({
       ...prev,
@@ -141,7 +209,7 @@ export default function App() {
   return (
     <div className="app-container">
       {/* Top Prototype & Architecture Notice Banner */}
-      <DataNoticeBanner currentCity={effectiveCity} onOpenAi={() => setActiveTab('assistant')} />
+      <DataNoticeBanner currentCity={effectiveCity} onOpenAi={() => setActiveTab('assistant')} onRefresh={refreshLiveData} />
 
       {/* Navigation Header */}
       <Navbar

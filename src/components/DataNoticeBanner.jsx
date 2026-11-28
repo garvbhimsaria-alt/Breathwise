@@ -1,12 +1,14 @@
 import React, { useState } from 'react';
 import { Info, X, Sparkles, Database, Radio } from 'lucide-react';
 
-export default function DataNoticeBanner({ currentCity, onOpenAi }) {
+export default function DataNoticeBanner({ currentCity, onOpenAi, onRefresh }) {
   const [dismissed, setDismissed] = useState(false);
 
   if (dismissed) return null;
 
   const isLive = currentCity?.isLiveData;
+  const isUnavailable = currentCity?.dataUnavailable;
+  const isLoading = currentCity?.dataLoading;
 
   return (
     <div style={{
@@ -21,7 +23,19 @@ export default function DataNoticeBanner({ currentCity, onOpenAi }) {
       gap: '12px'
     }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-        {isLive ? (
+        {isUnavailable ? (
+          <>
+            <span style={{ backgroundColor: '#FDE68A', color: '#78350F', fontWeight: 700, fontSize: '0.7rem', padding: '2px 8px', borderRadius: '9999px', textTransform: 'uppercase' }}>
+              Live Data Unavailable
+            </span>
+            <span style={{ color: '#E2ECE9' }}>
+              Could not refresh readings for <strong>{currentCity.name}</strong>. {currentCity.dataError || 'Reconnect the backend and retry.'}
+              <button onClick={onRefresh} style={{ color: '#8DE0C3', background: 'none', border: 'none', textDecoration: 'underline', cursor: 'pointer' }}>Retry</button>
+            </span>
+          </>
+        ) : isLoading ? (
+          <span style={{ color: '#E2ECE9' }}>Loading current readings for <strong>{currentCity.name}</strong>…</span>
+        ) : isLive ? (
           <>
             <span style={{
               backgroundColor: '#10B981',
@@ -40,7 +54,7 @@ export default function DataNoticeBanner({ currentCity, onOpenAi }) {
               Live Station Active
             </span>
             <span style={{ color: '#E2ECE9' }}>
-              Connected to <strong>{currentCity.liveStation || currentCity.name}</strong> via {currentCity.dataSource || 'Air Monitoring Net'}. Recommendations evaluate actual telemetry with CPCB rule safety boundaries.
+              Connected to <strong>{currentCity.liveStation || currentCity.name}</strong> via OpenAQ v3{currentCity.locationSource === 'ip-estimated' ? ' • approximate IP location, not exact' : currentCity.locationSource === 'auto' ? ' • browser-detected area' : ' • manually selected city'}. Recommendations evaluate actual telemetry with CPCB rule safety boundaries.
             </span>
           </>
         ) : (

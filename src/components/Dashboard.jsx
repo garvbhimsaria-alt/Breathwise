@@ -46,7 +46,7 @@ export default function Dashboard({
 
   // Determine time-of-day greeting
   const getGreeting = () => {
-    const hour = new Date().getHours();
+    const hour = Number(new Intl.DateTimeFormat('en-IN', { hour: 'numeric', hourCycle: 'h23', timeZone: 'Asia/Kolkata' }).format(new Date()));
     if (hour < 12) return 'Good morning';
     if (hour < 18) return 'Good afternoon';
     return 'Good evening';
@@ -136,7 +136,7 @@ export default function Dashboard({
             </div>
             <div style={{ fontSize: '0.75rem', color: '#6B878D' }}>
               {currentCity.isLiveData && currentCity.liveStation
-                ? `${currentCity.liveStation}${currentCity.liveDistanceKm ? ` • ${currentCity.liveDistanceKm} km away` : ''}`
+                ? `${currentCity.liveStation}${currentCity.liveDistanceKm != null ? ` • ${currentCity.liveDistanceKm} km ${currentCity.locationSource === 'ip-estimated' ? 'from approximate IP area' : currentCity.locationSource === 'auto' ? 'from detected location' : 'from selected city center'}` : ''}`
                 : (currentCity.region || 'Region')} • Click to switch city
             </div>
           </div>
@@ -144,6 +144,7 @@ export default function Dashboard({
       </div>
 
       {/* Decision Engine CPCB Scenario Switcher */}
+      {(import.meta.env.DEV || new URLSearchParams(window.location.search).get('debug') === 'true') && <>
       <div style={{
         backgroundColor: '#FFFFFF',
         border: '1px solid #C5DDD7',
@@ -213,6 +214,7 @@ export default function Dashboard({
           )}
         </div>
       </div>
+      </>}
 
       {/* Hero AQI Status Card */}
       <div 
@@ -418,7 +420,7 @@ export default function Dashboard({
                       {currentCity.temp}°C
                     </div>
                     <div style={{ fontSize: '0.675rem', color: '#6B878D', fontWeight: 500 }}>
-                      Humidity: {currentCity.humidity !== null && currentCity.humidity !== undefined ? `${currentCity.humidity}%` : 'Unavailable'}
+                      Humidity: {currentCity.humidity !== null && currentCity.humidity !== undefined ? `${currentCity.humidity}%` : 'Unavailable'}{currentCity.windSpeed != null ? ` • Wind: ${currentCity.windSpeed} km/h` : ''}{currentCity.weatherProvider ? ` • Weather: ${currentCity.weatherProvider}` : ''}
                     </div>
                   </>
                 ) : (
@@ -427,7 +429,7 @@ export default function Dashboard({
                       —
                     </div>
                     <div style={{ fontSize: '0.675rem', color: '#7E989C', fontWeight: 500 }}>
-                      Station doesn't report weather
+                      Weather unavailable
                     </div>
                   </>
                 )}

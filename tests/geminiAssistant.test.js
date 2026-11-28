@@ -213,16 +213,15 @@ describe('BreatheWise Gemini AI Assistant Suite', () => {
   it('9. Missing or unconfigured API key gracefully returns fallback status without crash', async () => {
     const originalKey = process.env.GEMINI_API_KEY;
     delete process.env.GEMINI_API_KEY;
-
-    const res = await generateAssistantResponse({
-      message: 'Hello'
-    });
-
-    assert.equal(res.status, 'fallback');
-    assert.equal(res.error, 'GEMINI_API_KEY_MISSING');
-    assert.ok(res.message.includes('GEMINI_API_KEY'));
-
-    process.env.GEMINI_API_KEY = originalKey;
+    try {
+      const res = await generateAssistantResponse({ message: 'Explain what PM2.5 means.' });
+      assert.equal(res.status, 'success');
+      assert.equal(res.source, 'basic');
+      assert.ok(res.data.message.length > 0);
+    } finally {
+      if (originalKey === undefined) delete process.env.GEMINI_API_KEY;
+      else process.env.GEMINI_API_KEY = originalKey;
+    }
   });
 
   // -------------------------------------------------------------------------

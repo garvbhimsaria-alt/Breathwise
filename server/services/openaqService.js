@@ -14,7 +14,7 @@ const BASE = 'https://api.openaq.org/v3';
 
 // Simple in-memory cache
 const cache = new Map();
-const CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes
+const CACHE_TTL_MS = 90 * 1000; // keep latest readings within the requested 60–120 second window
 
 /**
  * Find monitoring locations near a coordinate.
@@ -34,7 +34,7 @@ export async function fetchNearbyLocations(lat, lon, opts = {}) {
 
   const radius = opts.radiusM || 25000;
   const limit  = opts.limit   || 20;
-  const cacheKey = `oaq_loc_${lat.toFixed(2)}_${lon.toFixed(2)}_${radius}`;
+  const cacheKey = `oaq_loc_${lat.toFixed(4)}_${lon.toFixed(4)}_${radius}`;
 
   const cached = cache.get(cacheKey);
   if (cached && (Date.now() - cached.fetchedAt) < CACHE_TTL_MS) {
@@ -45,7 +45,7 @@ export async function fetchNearbyLocations(lat, lon, opts = {}) {
 
   try {
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 15000);
+    const timeout = setTimeout(() => controller.abort(), 8000);
 
     const response = await fetch(url, {
       signal: controller.signal,
@@ -71,8 +71,10 @@ export async function fetchNearbyLocations(lat, lon, opts = {}) {
       coordinates: loc.coordinates ? { lat: loc.coordinates.latitude, lon: loc.coordinates.longitude } : null,
       country:     loc.country?.code || null,
       countryName: loc.country?.name || null,
-      provider:    loc.providers?.[0]?.name || loc.owner?.name || 'Unknown',
+      provider:    loc.provider?.name || loc.providers?.[0]?.name || loc.owner?.name || 'Unknown',
       isCpcb:      isCpcbSource(loc),
+      locality:    loc.locality || null,
+      state:       loc.state || loc.adminRegion || null,
       sensors:     (loc.sensors || []).map(s => ({
         id:          s.id,
         parameter:   s.parameter?.name || null,
@@ -102,6 +104,60 @@ export async function fetchNearbyLocations(lat, lon, opts = {}) {
   }
 }
 
+let indiaLocationsCache = null;
+const INDIA_LOCATIONS_TTL_MS = 30 * 60 * 1000;
+const INDIA_LOCATIONS_PAGE_LIMIT = 100;
+const INDIA_LOCATIONS_MAX_PAGES = 25;
+
+/** Fetch India's OpenAQ location inventory for the live city picker. */
+export async function fetchIndianLocations() {
+  const apiKey = process.env.OPENAQ_API_KEY;
+  if (!apiKey) return { error: 'OPENAQ_API_KEY is not configured', provider: 'OpenAQ' };
+  if (indiaLocationsCache && Date.now() - indiaLocationsCache.fetchedAt < INDIA_LOCATIONS_TTL_MS) {
+    return { ...indiaLocationsCache.data, fromCache: true };
+  }
+
+  const locations = [];
+  let found = 0;
+  const headers = { Accept: 'application/json', 'X-API-Key': apiKey };
+  try {
+    for (let page = 1; page <= INDIA_LOCATIONS_MAX_PAGES; page += 1) {
+      const url = `${BASE}/locations?iso=IN&limit=${INDIA_LOCATIONS_PAGE_LIMIT}&page=${page}`;
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 15000);
+      let response;
+      try {
+        response = await fetch(url, { signal: controller.signal, headers });
+      } finally {
+        clearTimeout(timer);
+      }
+      if (!response.ok) {
+        return { error: `OpenAQ locations returned HTTP ${response.status}`, provider: 'OpenAQ' };
+      }
+      const json = await response.json();
+      const pageLocations = Array.isArray(json.results) ? json.results : [];
+      found = Number(json.meta?.found) || locations.length + pageLocations.length;
+      locations.push(...pageLocations);
+      if (pageLocations.length < INDIA_LOCATIONS_PAGE_LIMIT || locations.length >= found) break;
+    }
+
+    const result = {
+      locations,
+      total: found,
+      partial: locations.length < found,
+      provider: 'OpenAQ',
+      fetchedAt: new Date().toISOString(),
+      fromCache: false
+    };
+    indiaLocationsCache = { data: result, fetchedAt: Date.now() };
+    return result;
+  } catch (err) {
+    return {
+      error: err.name === 'AbortError' ? 'OpenAQ city inventory request timed out' : `OpenAQ city inventory fetch failed: ${err.message}`,
+      provider: 'OpenAQ'
+    };
+  }
+}
 /**
  * Fetch latest sensor measurements for a specific location.
  *
@@ -110,128 +166,87 @@ export async function fetchNearbyLocations(lat, lon, opts = {}) {
  */
 export async function fetchLocationMeasurements(locationId) {
   const apiKey = process.env.OPENAQ_API_KEY;
-  if (!apiKey) {
-    return { error: 'OPENAQ_API_KEY is not configured', provider: 'OpenAQ' };
-  }
+  if (!apiKey) return { error: 'OPENAQ_API_KEY is not configured', provider: 'OpenAQ' };
 
-  const cacheKey = `oaq_meas_${locationId}`;
+  const cacheKey = 'oaq_meas_' + locationId;
   const cached = cache.get(cacheKey);
-  if (cached && (Date.now() - cached.fetchedAt) < (5 * 60 * 1000)) { // 5 min cache for measurements
+  if (cached && (Date.now() - cached.fetchedAt) < 90 * 1000) {
     return { ...cached.data, fromCache: true };
   }
 
-  const locationUrl = `${BASE}/locations/${locationId}`;
-  const latestUrl   = `${BASE}/locations/${locationId}/latest`;
+  const headers = { Accept: 'application/json', 'X-API-Key': apiKey };
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 15000);
 
   try {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 15000);
+    const [locResp, latestResp] = await Promise.all([
+      fetch(BASE + '/locations/' + locationId, { signal: controller.signal, headers }),
+      fetch(BASE + '/locations/' + locationId + '/latest', { signal: controller.signal, headers })
+    ]);
 
-    // --- fetch location metadata (sensors list) ---
-    const locResp = await fetch(locationUrl, {
-      signal: controller.signal,
-      headers: {
-        'Accept': 'application/json',
-        'X-API-Key': apiKey
-      }
-    });
     if (!locResp.ok) {
-      clearTimeout(timeout);
-      return {
-        error: `OpenAQ returned HTTP ${locResp.status}`,
-        status: locResp.status,
-        provider: 'OpenAQ'
-      };
+      return { error: 'OpenAQ location returned HTTP ' + locResp.status, status: locResp.status, provider: 'OpenAQ' };
     }
-    const locJson = await locResp.json();
-    const loc = locJson.results?.[0] || locJson;
-
-    // --- fetch latest measurements ---
-    const latestResp = await fetch(latestUrl, {
-      signal: controller.signal,
-      headers: {
-        'Accept': 'application/json',
-        'X-API-Key': apiKey
-      }
-    });
-    clearTimeout(timeout);
     if (!latestResp.ok) {
+      return { error: 'OpenAQ latest returned HTTP ' + latestResp.status, status: latestResp.status, provider: 'OpenAQ' };
+    }
+
+    const [locJson, latestJson] = await Promise.all([locResp.json(), latestResp.json()]);
+    const loc = locJson.results?.[0] || locJson;
+    let measurements = Array.isArray(latestJson.results) ? latestJson.results : [];
+    if (measurements.length === 1 && Array.isArray(measurements[0].measurements)) {
+      measurements = measurements[0].measurements;
+    }
+
+    const readingsBySensor = new Map();
+    for (const reading of measurements) {
+      const sensorId = reading.sensorsId ?? reading.sensorId;
+      if (sensorId == null) continue;
+      readingsBySensor.set(String(sensorId), {
+        value: reading.value,
+        timestamp: reading.datetime?.utc || null
+      });
+    }
+
+    const sensors = (loc.sensors || []).map(sensor => {
+      const reading = readingsBySensor.get(String(sensor.id));
       return {
-        error: `OpenAQ latest returned HTTP ${latestResp.status}`,
-        status: latestResp.status,
-        provider: 'OpenAQ'
+        id: sensor.id,
+        parameter: sensor.parameter?.name || null,
+        parameterId: sensor.parameter?.id || null,
+        unit: sensor.parameter?.units || null,
+        lastValue: reading?.value ?? null,
+        lastUpdated: reading?.timestamp || null
       };
-    }
-    const latestJson = await latestResp.json();
+    });
 
-    // Sensors metadata (without values)
-    const sensors = (loc.sensors || []).map(s => ({
-      id:          s.id,
-      parameter:   s.parameter?.name || null,
-      parameterId: s.parameter?.id || null,
-      unit:        s.parameter?.units || null,
-      lastValue:   null,
-      lastUpdated: null
-    }));
-
-    // Determine where the actual measurement array lives. Newer OpenAQ responses wrap measurements inside the first result object's `measurements` field.
-    let measurements = [];
-    if (Array.isArray(latestJson.results) && latestJson.results.length > 0) {
-      const first = latestJson.results[0];
-      if (Array.isArray(first.measurements)) {
-        measurements = first.measurements; // nested array (current API shape)
-      } else {
-        measurements = latestJson.results; // fallback to flat array (legacy shape)
-      }
-    }
-    // Map measurements by sensor id (OpenAQ uses `sensorId` or `sensorsId`)
-    const measBySensor = new Map();
-    for (const m of measurements) {
-      const sid = m.sensorsId ?? m.sensorId;
-      if (sid != null) {
-        measBySensor.set(sid, {
-          value: m.value,
-          timestamp: m.datetime?.utc || null
-        });
-      }
-    }
-
-    // Attach latest values to sensors
-    for (const s of sensors) {
-      const meas = measBySensor.get(s.id);
-      if (meas) {
-        s.lastValue   = meas.value;
-        s.lastUpdated = meas.timestamp;
-        // unit stays from sensor metadata; do NOT overwrite with meas.unit
-
-      }
-    }
-
-    // Build pollutant concentration map and overall latest timestamp
     const pollutants = {};
     let latestTimestamp = null;
-    for (const s of sensors) {
-      if (s.lastValue === null || s.parameter === null) continue;
-      const normalised = normaliseParam(s.parameter);
-      if (normalised) {
-        pollutants[normalised] = {
-          value: s.lastValue,
-          unit:  s.unit,
-          timestamp: s.lastUpdated
-        };
-        if (s.lastUpdated && (!latestTimestamp || new Date(s.lastUpdated) > new Date(latestTimestamp))) {
-          latestTimestamp = s.lastUpdated;
-        }
+    for (const sensor of sensors) {
+      if (sensor.lastValue == null || !sensor.parameter) continue;
+      const normalized = normaliseParam(sensor.parameter);
+      if (!normalized) continue;
+      pollutants[normalized] = {
+        value: sensor.lastValue,
+        unit: sensor.unit,
+        timestamp: sensor.lastUpdated
+      };
+      if (sensor.lastUpdated && (!latestTimestamp || new Date(sensor.lastUpdated) > new Date(latestTimestamp))) {
+        latestTimestamp = sensor.lastUpdated;
       }
     }
 
     const result = {
       locationId: loc.id,
-      name:        loc.name || 'Unknown Station',
-      coordinates: loc.coordinates ? { lat: loc.coordinates.latitude, lon: loc.coordinates.longitude } : null,
-      country:     loc.country?.code || null,
-      provider:    loc.providers?.[0]?.name || loc.owner?.name || 'Unknown',
-      isCpcb:      isCpcbSource(loc),
+      name: loc.name || 'Unknown Station',
+      coordinates: loc.coordinates
+        ? { lat: loc.coordinates.latitude, lon: loc.coordinates.longitude }
+        : null,
+      country: loc.country?.code || null,
+      locality: loc.locality || null,
+      state: loc.state || loc.adminRegion || null,
+      provider: loc.provider?.name || loc.providers?.[0]?.name || loc.owner?.name || 'Unknown',
+      isCpcb: isCpcbSource(loc),
       pollutants,
       sensors,
       latestTimestamp,
@@ -242,13 +257,16 @@ export async function fetchLocationMeasurements(locationId) {
     cache.set(cacheKey, { data: result, fetchedAt: Date.now() });
     return result;
   } catch (err) {
-    if (err.name === 'AbortError') {
-      return { error: 'OpenAQ request timed out (15s)', provider: 'OpenAQ' };
-    }
-    return { error: `OpenAQ fetch failed: ${err.message}`, provider: 'OpenAQ' };
+    return {
+      error: err.name === 'AbortError'
+        ? 'OpenAQ request timed out (15s)'
+        : 'OpenAQ fetch failed: ' + err.message,
+      provider: 'OpenAQ'
+    };
+  } finally {
+    clearTimeout(timeout);
   }
 }
-
 // ── Helpers ──────────────────────────────────────────────────
 
 /**
@@ -257,6 +275,7 @@ export async function fetchLocationMeasurements(locationId) {
  */
 function isCpcbSource(location) {
   const providerName = (
+    location.provider?.name ||
     location.providers?.[0]?.name ||
     location.owner?.name ||
     ''

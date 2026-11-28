@@ -13,6 +13,8 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   checkBackendHealth,
   fetchAqiForCity,
+  fetchAqiNearby,
+  fetchWeather,
   pickBestStation,
   stationToCityFormat
 } from '../services/aqiApiClient.js';
@@ -53,8 +55,10 @@ export function useLiveAqi(demoCity) {
   const [liveCity, setLiveCity]       = useState(null);
   const [lastFetchError, setLastFetchError] = useState(null);
   const refreshTimerRef = useRef(null);
+  const requestIdRef = useRef(0); // ignore responses from an older, superseded request
 
   const fetchLive = useCallback(async (cityObj) => {
+    const myRequestId = ++requestIdRef.current;
     // 1. Health check runs alongside the data request for status display only.
     //    It no longer blocks live data (a missing /api/health route must not force demo mode).
     checkBackendHealth().then(setBackendStatus).catch(() => {});
@@ -63,15 +67,16 @@ export function useLiveAqi(demoCity) {
     const cityId = cityObj?.id || 'delhi';
     const isGeoStation = cityId.startsWith('geo-');
 
-    // Cities picked from the live list carry their exact CPCB city + state
+    // Cities picked from the OpenAQ list carry their location name and coordinates
     const liveQuery = cityObj?.liveQuery || null;
     const cityName = liveQuery?.city
       || CITY_QUERY_MAP[cityId]
       || (cityObj?.name || 'Delhi');
-    const coords = CITY_COORDS[cityId]
-      || (isGeoStation && cityObj?.liveStationCoords
-        ? { lat: cityObj.liveStationCoords.lat, lon: cityObj.liveStationCoords.lon }
-        : null);
+    const coords = (Number.isFinite(liveQuery?.lat) && Number.isFinite(liveQuery?.lon)
+      ? { lat: liveQuery.lat, lon: liveQuery.lon }
+      : null)
+      || CITY_COORDS[cityId]
+      || null;
 
     // 3. Fetch real data
     // For geo stations that already have live data embedded, use them directly
@@ -82,14 +87,32 @@ export function useLiveAqi(demoCity) {
       return;
     }
 
-    const result = await fetchAqiForCity(cityName, {
+    // Prefer the coordinate-based nearest-station lookup (the same one "Use My Current
+    // Location" uses). The /city endpoint only knows cities in the backend's own index,
+    // so it returns HTTP 404 for many valid cities (Panipat, Thane, ...).
+    const cityLookup = () => fetchAqiForCity(cityName, {
       state: liveQuery?.state,
       lat: coords?.lat,
       lon: coords?.lon
     });
+    const isUsable = (r) => r && !r.error && r.dataType !== 'unavailable' && !!pickBestStation(r);
+
+    let result;
+    if (coords) {
+      result = await fetchAqiNearby(coords.lat, coords.lon);
+      if (!isUsable(result)) {
+        const cityResult = await cityLookup();
+        if (isUsable(cityResult)) result = cityResult; // otherwise keep the nearby error
+      }
+    } else {
+      result = await cityLookup();
+    }
+
+    // A newer request (e.g. the user picked another city) has started: drop this result
+    if (myRequestId !== requestIdRef.current) return;
 
     if (result.error || result.dataType === 'unavailable') {
-      setDataMode('demo');
+      setDataMode('error');
       setLiveCity(null);
       const detail = result.errors ? ` (${[result.errors.cpcb, result.errors.openaq].filter(Boolean).join('; ')})` : '';
       setLastFetchError(`${result.error || result.message || 'No data available from providers.'}${detail}`);
@@ -99,7 +122,7 @@ export function useLiveAqi(demoCity) {
     // 4. Pick best station
     const best = pickBestStation(result);
     if (!best) {
-      setDataMode('demo');
+      setDataMode('error');
       setLiveCity(null);
       setLastFetchError('Live stations found but all data is too stale or incomplete.');
       return;
@@ -107,6 +130,21 @@ export function useLiveAqi(demoCity) {
 
     // 5. Convert to city format and check freshness
     const liveCityObj = stationToCityFormat(best, cityObj);
+    const weatherCoords = coords || best.coordinates;
+    if (weatherCoords) {
+      const weather = await fetchWeather(weatherCoords.lat, weatherCoords.lon);
+      if (myRequestId !== requestIdRef.current) return;
+      if (weather) {
+        liveCityObj.temp = weather.temperature;
+        liveCityObj.humidity = weather.humidity;
+        liveCityObj.windSpeed = weather.windSpeed;
+        liveCityObj.windDirection = weather.windDirection;
+        liveCityObj.boundaryLayerHeight = weather.boundaryLayerHeight;
+        liveCityObj.visibility = weather.visibility;
+        liveCityObj.weatherProvider = weather.provider;
+        liveCityObj.weatherObservedAt = weather.observedAt;
+      }
+    }
 
     // If the data is very stale, still show it but flag it
     if (best.freshness?.status === 'very_stale') {

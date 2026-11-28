@@ -3,7 +3,7 @@
  *
  * Lightweight Express proxy that:
  *  1. Keeps API credentials server-side (never sent to the browser).
- *  2. Fetches air-quality data from CPCB / data.gov.in and OpenAQ v3.
+ *  2. Fetches AQI only from CPCB-source stations through OpenAQ v3.
  *  3. Normalises readings into a single format the React frontend understands.
  *  4. Implements caching and freshness validation.
  */
@@ -37,7 +37,6 @@ app.get('/api/health', (_req, res) => {
     status: 'ok',
     timestamp: new Date().toISOString(),
     providers: {
-      dataGovIn: process.env.DATA_GOV_IN_API_KEY ? 'key_configured' : 'key_missing',
       openAQ:    process.env.OPENAQ_API_KEY       ? 'key_configured' : 'key_missing',
       gemini:    isGeminiConfigured()             ? 'key_configured' : 'key_missing'
     },
@@ -53,7 +52,6 @@ app.use('/api/assistant', assistantRoutes);
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
   console.log(`\n  🌿 BreatheWise backend running on http://localhost:${PORT}`);
-  console.log(`     CPCB / data.gov.in key: ${process.env.DATA_GOV_IN_API_KEY ? '✓ configured' : '✗ missing'}`);
   console.log(`     OpenAQ v3 key:          ${process.env.OPENAQ_API_KEY ? '✓ configured' : '✗ missing'}`);
-  console.log(`     Gemini AI key:          ${isGeminiConfigured() ? `✓ configured (${getGeminiModel()})` : '✗ missing (set GEMINI_API_KEY in .env)'}\n`);
+  console.log(`     Gemini AI key:          ${isGeminiConfigured() ? `✓ configured (${getGeminiModel()})` : '✗ missing (set GEMINI_API_KEY in server environment)'}\n`);
 });

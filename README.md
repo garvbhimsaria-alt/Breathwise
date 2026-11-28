@@ -35,7 +35,7 @@ BreatheWise was built to bridge the gap between raw atmospheric monitoring data 
 
 ## 4. Main Features
 
-- 📊 **Real-Time CPCB Ambient Dashboard:** Displays live Indian CPCB National Air Quality Index (NAQI) telemetry, dominant pollutants (PM2.5, PM10, NO2, CO, SO2, O3, NH3), sub-indices, observation timestamps, and freshness statuses.
+- 📊 **OpenAQ Ambient Dashboard:** Displays recent readings from OpenAQ locations identified as CPCB-source, with pollutant values, timestamps, freshness, and a clearly labelled real-time AQI estimate when coverage allows.
 - 🎛️ **CPCB Decision Engine Scenario Controller:** Instantly simulate all 6 official CPCB NAQI breakpoints (*Good*, *Satisfactory*, *Moderate*, *Poor*, *Very Poor*, *Severe*) as well as missing or stale sensor states to verify deterministic safety rules.
 - 🗓️ **"Your Day, Reimagined" Dynamic Routine:** Generates an explainable 4-phase daily schedule (Morning, Commute, Evening, Night) anchored to the user's target wake-up time, adjusting cardio, window ventilation, and transit around peak inversion hours.
 - 💬 **Grounded Gemini AI Assistant:** Google Gemini Developer API integration that answers contextual questions about workouts, commutes, and routines while strictly respecting Decision Engine safety guardrails.
@@ -64,7 +64,7 @@ BreatheWise was built to bridge the gap between raw atmospheric monitoring data 
 - **System Guardrails:** Persona-anchored prompt engineering enforcing Decision Engine safety primacy, JSON response schemas, and bounded input sanitization.
 
 ### Data Providers & Standards
-- **Primary Live Provider:** Central Pollution Control Board (CPCB) via Open Government Data (data.gov.in)
+- **Only AQI provider:** OpenAQ v3 locations marked as CPCB-source; the backend does not call data.gov.in.
 - **Secondary Fallback Provider:** OpenAQ v3 API
 - **Index Standard:** Indian CPCB National Air Quality Index (NAQI) piecewise linear sub-index formula
 
@@ -85,7 +85,7 @@ BreatheWise was built to bridge the gap between raw atmospheric monitoring data 
                       └───────┬──────────────────────┬────────┘
                               │                      │
              ┌────────────────▼─────────┐   ┌────────▼─────────────────┐
-             │ CPCB / data.gov.in API   │   │ Google Gemini Flash API  │
+             │ OpenAQ v3 API            │   │ Google Gemini Flash API  │
              │   (OpenAQ v3 Fallback)   │   │ (@google/genai SDK)      │
              └──────────────────────────┘   └──────────────────────────┘
 ```
@@ -139,10 +139,7 @@ cp .env.example .env
 
 Edit `.env`:
 ```env
-# Primary Provider: CPCB via data.gov.in (Optional for local testing; demo data activates if blank)
-DATA_GOV_IN_API_KEY=your_data_gov_in_api_key
-
-# Secondary Provider: OpenAQ v3 (Optional fallback)
+# AQI Provider: OpenAQ v3 (required for live measurements)
 OPENAQ_API_KEY=your_openaq_api_key
 
 # Conversational Assistant: Google Gemini Developer API
@@ -155,25 +152,17 @@ PORT=5000
 ```
 
 ### 4. Run the Development Servers
-Open two terminal windows:
-
-**Terminal 1 (Backend Server):**
-```bash
-npm run server
-```
-*(Backend runs on `http://localhost:5000`)*
-
-**Terminal 2 (Frontend Client):**
+Run both local services with one command:
 ```bash
 npm run dev
 ```
-*(Frontend runs on `http://localhost:3000`)*
+*(Frontend runs on `http://localhost:3000`; the backend uses port 5000. If you run the backend separately, use `npm run server` and then `npm run dev:web`.)*
 
 ---
 
 ## 9. Automated Testing
 
-BreatheWise includes a comprehensive 122-test automated suite using Node.js's native test runner (`node:test`):
+BreatheWise includes an automated test suite using Node.js's native test runner (`node:test`):
 
 ```bash
 npm test
@@ -184,6 +173,14 @@ npm test
 - **`tests/serverAqiCalculator.test.js` (35 tests):** CPCB piecewise linear math, zero concentration handling, unit conversions (ppb to µg/m³), and freshness classifications.
 - **`tests/geminiAssistant.test.js` (18 tests):** Context prompt construction, multi-turn history sanitization, token bounding, and structured JSON parsing.
 - **`tests/finalAudit.test.js` (19 tests):** Pre-deployment audit scenarios, timeline schedule anchoring, prompt-injection defense, and non-purifier safety bounds.
+- **`tests/openaqStationSelection.test.js`:** Nearest-first live station selection and reference AQI breakpoint examples.
+
+### Manual QA Checklist
+- Search Delhi, Pune, and Mumbai; confirm rows are city/locality groups, then select each and verify the live station name, source, timestamp, and distance.
+- Search a smaller city; if OpenAQ has no recent CPCB-source PM reading, confirm the app says live readings are unavailable and never substitutes sample values.
+- Allow browser location and confirm nearest station distance is measured from the browser coordinates. Deny permission and confirm the approximate IP location is clearly labeled.
+- Stop the backend or disconnect the network; confirm the banner offers Retry and no live city is replaced by demo measurements.
+- Reload after choosing a city/current location; confirm the selection persists and the backend refreshes readings.
 
 ### Production Build:
 ```bash
@@ -200,7 +197,7 @@ BreatheWise is structured for 100% free hosting:
 | Component | Platform | Configuration |
 |---|---|---|
 | **Frontend SPA** | **Cloudflare Pages** | Build command: `npm run build`<br>Output directory: `dist`<br>Client-side routing: Handled via `public/_redirects` |
-| **Backend API** | **Render (Free Web Service)** | Root directory: `server`<br>Build command: `npm install`<br>Start command: `node index.js`<br>Environment variables: `GEMINI_API_KEY`, `DATA_GOV_IN_API_KEY`, `CLIENT_ORIGIN` |
+| **Backend API** | **Render (Free Web Service)** | Root directory: `server`<br>Build command: `npm install`<br>Start command: `node index.js`<br>Environment variables: `OPENAQ_API_KEY`, `GEMINI_API_KEY`, `CLIENT_ORIGIN` |
 
 ### Free-Tier Limitations to Note:
 1. **Render Cold Starts:** Render's free web services spin down after 15 minutes of inactivity. When a request arrives after sleep, spin-up may take 45–50 seconds. BreatheWise handles this gracefully: if the backend is waking up, the frontend displays clear loading states and falls back to demonstration mode rather than crashing.
@@ -229,6 +226,6 @@ BreatheWise is structured for 100% free hosting:
 
 - **License:** MIT License.
 - **Data Attribution:**
-  - Ambient air quality data provided by Central Pollution Control Board (CPCB) via Open Government Data Platform India (data.gov.in) under Government Open Data License (GODL).
+  - Ambient air quality measurements are fetched through OpenAQ v3. Source attribution varies by monitoring location; the app labels the selected station as a CPCB-source location only when OpenAQ metadata indicates that source.
   - OpenAQ data provided under respective open station licenses.
 - **AI Attribution:** Powered by Google Gemini Developer API.

@@ -113,11 +113,13 @@ isSendingRef.current = true;
 
     // Prepare structured context
     const aqiContext = {
+      city: currentCity.name || null,
       aqi: hasValidAqi ? aqiRes.aqi : null,
       category: hasValidAqi ? aqiRes.category : null,
       primaryPollutant: currentCity.primaryPollutant || null,
       pm25: currentCity.pm25 ?? null,
       pm10: currentCity.pm10 ?? null,
+      weather: currentCity.weatherProvider ? { provider: currentCity.weatherProvider, temperature: currentCity.temp, humidity: currentCity.humidity, windSpeed: currentCity.windSpeed, visibility: currentCity.visibility, boundaryLayerHeight: currentCity.boundaryLayerHeight } : null,
       dataSource: currentCity.dataSource || null,
       station: currentCity.liveStation || currentCity.name,
       lastUpdated: currentCity.lastUpdated || aqiRes?.lastUpdatedText,

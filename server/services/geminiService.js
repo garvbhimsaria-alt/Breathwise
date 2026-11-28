@@ -177,7 +177,7 @@ function normalizeResponseSchema(obj) {
 // ───────────────────────── Gemini call with bounded retries ─────────────────────────
 
 const ATTEMPT_TIMEOUT_MS = 10000; // per attempt
-const TOTAL_BUDGET_MS = 22000;    // across all attempts and models
+const TOTAL_BUDGET_MS = 28000;    // across all attempts and models
 
 const sleep = (ms) => new Promise((res) => setTimeout(res, ms));
 
@@ -280,14 +280,21 @@ export async function generateAssistantResponse({
   ];
 
   const primary = getGeminiModel();
-  const secondary = (process.env.GEMINI_FALLBACK_MODEL || '').trim();
-  const models = [primary, ...(secondary && secondary !== primary ? [secondary] : [])];
+  // GEMINI_FALLBACK_MODEL may list several models, comma-separated, tried in order
+  const backups = (process.env.GEMINI_FALLBACK_MODEL || '')
+    .split(',')
+    .map((m) => m.trim())
+    .filter(Boolean);
+  const models = [...new Set([primary, ...backups])];
+  // With several models available, move on after one failed attempt (an overloaded model
+  // usually stays overloaded for a while); with a single model, retry once.
+  const attemptsPerModel = models.length > 1 ? 1 : 2;
   const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
   const started = Date.now();
   let failureReason = 'The AI service is temporarily unavailable.';
 
   for (const model of models) {
-    for (let attempt = 1; attempt <= 2; attempt++) {
+    for (let attempt = 1; attempt <= attemptsPerModel; attempt++) {
       const left = TOTAL_BUDGET_MS - (Date.now() - started);
       if (left < 1500) break;
 
@@ -319,7 +326,7 @@ export async function generateAssistantResponse({
             : 'The AI service is temporarily unavailable.';
 
         if (!isRetryable(err)) break;      // e.g. 404 bad model name: go to next model
-        if (attempt === 1) await sleep(600);
+        if (attempt < attemptsPerModel) await sleep(600); // pause only before a retry on the same model
       }
     }
   }

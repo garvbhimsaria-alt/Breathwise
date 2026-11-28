@@ -12,7 +12,8 @@ export default defineConfig({
       // Forward /api calls to the Express backend during development.
       // This keeps API keys server-side and avoids CORS issues.
       '/api': {
-        target: 'http://localhost:5000',
+        // Use IPv4 explicitly to avoid Windows resolving localhost to ::1
+        target: `http://127.0.0.1:${process.env.BW_SERVER_PORT || '5000'}`,
         changeOrigin: true,
         secure: false
       }
