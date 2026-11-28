@@ -6,7 +6,7 @@
  * backend holds all credentials).
  *
  * When the backend is unreachable the client returns a clear
- * error so the app can show live data as unavailable.
+ * error so the app can fall back to demonstration mode.
  */
 
 const SERVER_URL = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_API_BASE_URL) || '';
@@ -25,24 +25,14 @@ async function fetchJson(url, timeoutMs = REQUEST_TIMEOUT_MS) {
   }
 }
 
-// Use the backend's own explanation (e.g. "No recent station within 100 km") when it sends one.
-async function errorDetail(response) {
-  try {
-    const body = await response.json();
-    const text = body?.error || body?.message;
-    if (text) return text;
-  } catch { /* body was not JSON */ }
-  return `Backend returned HTTP ${response.status}`;
-}
-
 /**
- * Fetch air quality from OpenAQ CPCB-source locations only.
+ * Fetch air quality for a city name (primarily CPCB, with OpenAQ fallback).
  *
  * @param {string} city – City name, e.g. "Delhi"
  * @param {Object} [opts]
  * @param {string} [opts.state] – Optional state, to tell apart same-named cities
- * @param {number} [opts.lat] – Optional latitude for the primary OpenAQ lookup
- * @param {number} [opts.lon] – Optional longitude for the primary OpenAQ lookup
+ * @param {number} [opts.lat] – Optional latitude for OpenAQ fallback
+ * @param {number} [opts.lon] – Optional longitude for OpenAQ fallback
  * @returns {Promise<Object>}
  */
 export async function fetchAqiForCity(city, opts = {}) {
@@ -55,7 +45,7 @@ export async function fetchAqiForCity(city, opts = {}) {
     const response = await fetchJson(`${API_BASE}/city?${params.toString()}`);
 
     if (!response.ok) {
-      return { error: await errorDetail(response), status: response.status, dataType: 'unavailable' };
+      return { error: `Backend returned HTTP ${response.status}`, dataType: 'unavailable' };
     }
 
     return await response.json();
@@ -63,7 +53,7 @@ export async function fetchAqiForCity(city, opts = {}) {
     return {
       error: `Backend unreachable: ${err.message}`,
       dataType: 'unavailable',
-      message: 'The backend server is not running. Start it and retry.'
+      message: 'The backend server is not running. Using demonstration mode.'
     };
   }
 }
@@ -80,37 +70,13 @@ export async function fetchAqiNearby(lat, lon) {
     const response = await fetchJson(`${API_BASE}/nearby?lat=${lat}&lon=${lon}`);
 
     if (!response.ok) {
-      return { error: await errorDetail(response), status: response.status, dataType: 'unavailable' };
+      return { error: `Backend returned HTTP ${response.status}`, dataType: 'unavailable' };
     }
 
     return await response.json();
   } catch (err) {
     return { error: `Backend unreachable: ${err.message}`, dataType: 'unavailable' };
   }
-}
-
-export async function fetchWeather(lat, lon) {
-  try {
-    const response = await fetchJson(`${API_BASE}/weather?lat=${encodeURIComponent(lat)}&lon=${encodeURIComponent(lon)}`, 12000);
-    if (!response.ok) return null;
-    return await response.json();
-  } catch { return null; }
-}
-
-export async function fetchApproximateIpLocation() {
-  try {
-    const response = await fetchJson(`${API_BASE}/ip-location`, 7000);
-    return response.ok ? await response.json() : null;
-  } catch { return null; }
-}
-
-export async function searchIndianPlaces(query) {
-  try {
-    const response=await fetchJson(`${API_BASE}/geocode?name=${encodeURIComponent(query)}`,10000);
-    if(!response.ok) return [];
-    const body=await response.json();
-    return Array.isArray(body.results)?body.results:[];
-  } catch { return []; }
 }
 
 let cityListCache = null; // { at, data }
@@ -129,7 +95,7 @@ export async function fetchCityList() {
   try {
     const response = await fetchJson(`${API_BASE}/cities`);
     if (!response.ok) {
-      // The backend explains why in its JSON body (for example, an OpenAQ timeout).
+      // The backend explains why in its JSON body (e.g. data.gov.in HTTP 403 or a timeout)
       let detail = '';
       try {
         const body = await response.json();
@@ -141,7 +107,8 @@ export async function fetchCityList() {
     if (!Array.isArray(json.cities)) {
       return { cities: [], error: json.error || 'Unexpected response from backend' };
     }
-    cityListCache = { at: Date.now(), data: json };
+    // While the server is still filling its station cache the list is partial: do not cache it
+    if (!(json.snapshot && json.snapshot.warming)) cityListCache = { at: Date.now(), data: json };
     return json;
   } catch (err) {
     return {
@@ -211,19 +178,37 @@ export function pickBestStation(apiResponse) {
     if (aggregate) return aggregate;
   }
 
-  // Nearest known station wins; AQI coverage and freshness break distance ties.
-  stations.sort((a, b) => {
-    const aDistance = Number.isFinite(a.distanceKm) ? a.distanceKm : Infinity;
-    const bDistance = Number.isFinite(b.distanceKm) ? b.distanceKm : Infinity;
-    if (aDistance !== bDistance) return aDistance - bDistance;
+  // Prefer stations that actually have an overall AQI (a nearer station without one is skipped)
+  const withAqi = stations.filter(s => s.aqi !== null && s.aqi !== undefined);
+  const pool = withAqi.length > 0 ? withAqi : stations;
 
-    if ((a.aqi != null) !== (b.aqi != null)) return a.aqi != null ? -1 : 1;
+  // Sort by priority:
+  // 1. Shortest known distance (stations without distance are placed after those with distance)
+  // 2. AQI availability (prefer stations with a computed AQI)
+  // 3. Pollutant count (more pollutants measured is better)
+  // 4. Freshness (lower ageMinutes is fresher)
+  pool.sort((a, b) => {
+    const aHasDist = a.distanceKm !== null && a.distanceKm !== undefined;
+    const bHasDist = b.distanceKm !== null && b.distanceKm !== undefined;
+    if (aHasDist && !bHasDist) return -1;
+    if (!aHasDist && bHasDist) return 1;
+    if (aHasDist && bHasDist && a.distanceKm !== b.distanceKm) {
+      return a.distanceKm - b.distanceKm;
+    }
+
+    // AQI availability
+    if (a.aqi !== null && b.aqi === null) return -1;
+    if (a.aqi === null && b.aqi !== null) return 1;
+
+    // Pollutant coverage
     const countDiff = (b.pollutantCount || 0) - (a.pollutantCount || 0);
     if (countDiff !== 0) return countDiff;
-    return (a.freshness?.ageMinutes ?? Infinity) - (b.freshness?.ageMinutes ?? Infinity);
+
+    // Freshness
+    return (a.freshness?.ageMinutes ?? 999) - (b.freshness?.ageMinutes ?? 999);
   });
 
-  return stations[0];
+  return pool[0];
 }
 
 /**
@@ -259,8 +244,12 @@ export function stationToCityFormat(station, baseCity) {
     pollutantUnits: station.pollutantUnits || {},
 
     // Weather: only keep baseCity weather if baseCity is not a synthetic geo station
-    temp: baseCity?.isLiveData ? (station.temp ?? null) : (baseCity?.temp ?? station.temp ?? null),
-    humidity: baseCity?.isLiveData ? (station.humidity ?? null) : (baseCity?.humidity ?? station.humidity ?? null),
+    temp: (baseCity && baseCity.temp !== undefined && !baseCity.id?.startsWith('geo-'))
+      ? baseCity.temp
+      : (station.temp ?? null),
+    humidity: (baseCity && baseCity.humidity !== undefined && !baseCity.id?.startsWith('geo-'))
+      ? baseCity.humidity
+      : (station.humidity ?? null),
 
     // Metadata
     primaryPollutant: station.dominantPollutant
@@ -275,8 +264,6 @@ export function stationToCityFormat(station, baseCity) {
     liveStation:         station.station,
     liveStationCoords:   station.coordinates,
     liveDistanceKm:      station.distanceKm,
-    liveQuery: baseCity?.liveQuery || null,
-    locationSource: baseCity?.locationSource || 'manual',
     liveFreshness:       station.freshness,
     liveAqiLabel:        station.aqiLabel,
     liveAttribution:     station.attribution,
@@ -286,4 +273,12 @@ export function stationToCityFormat(station, baseCity) {
     livePollutantCount:  station.pollutantCount,
     averagingPeriodNote: station.averagingPeriodNote || null
   };
+}
+
+export async function fetchWeather(lat, lon) {
+  try {
+    const response = await fetchJson(`${API_BASE}/weather?lat=${encodeURIComponent(lat)}&lon=${encodeURIComponent(lon)}`, 12000);
+    if (!response.ok) return null;
+    return await response.json();
+  } catch { return null; }
 }

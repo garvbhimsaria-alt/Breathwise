@@ -5,87 +5,46 @@ import {
   Check,
   AlertCircle,
   Info,
-  Search
+  Search,
+  RefreshCw
 } from 'lucide-react';
+import { SAMPLE_CITIES } from '../data/mockData';
 import { classifyAqi } from '../engine';
 import {
   fetchAqiNearby,
-  fetchApproximateIpLocation,
-  searchIndianPlaces,
+  fetchCityList,
   pickBestStation,
   stationToCityFormat
 } from '../services/aqiApiClient';
-// Static list of Indian cities (name, state, lat, lon). Selecting one makes the
-// dashboard look up the nearest OpenAQ station using these coordinates.
-// If your cities.js lives elsewhere, adjust this path.
-import { SORTED_CITIES } from '../cities';
 
 const MAX_VISIBLE = 60;
+// Only used when the backend cannot supply the live city list.
+const DEMO_FALLBACK_IDS = ['delhi', 'mumbai', 'bengaluru'];
 
-function editDistance(a, b) {
-  const row = Array.from({ length: b.length + 1 }, (_, i) => i);
-  for (let i = 1; i <= a.length; i += 1) {
-    let diagonal = row[0]; row[0] = i;
-    for (let j = 1; j <= b.length; j += 1) {
-      const above = row[j];
-      row[j] = Math.min(row[j] + 1, row[j - 1] + 1, diagonal + (a[i - 1] === b[j - 1] ? 0 : 1));
-      diagonal = above;
-    }
-  }
-  return row[b.length];
-}
+const formatPollutant = (id) => {
+  if (!id) return null;
+  const v = String(id).toLowerCase();
+  if (v === 'pm25') return 'PM2.5';
+  if (v === 'pm10') return 'PM10';
+  return v.toUpperCase();
+};
 
-function matchesSearch(candidate, query) {
-  const value = String(candidate || '').toLowerCase();
-  if (value.includes(query)) return true;
-  if (query.length < 4) return false;
-  return value.split(/\s+/).some(word => Math.abs(word.length - query.length) <= 1 && editDistance(word, query) <= 1);
-}
-
-const slug = (s) => String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
-
-/** Turns an entry of the static city list into the city object the rest of the app uses. */
-function staticItemToCity(item) {
+/** Turns a row of the live city list into the city object the rest of the app uses. */
+function liveItemToCity(item) {
   return {
-    id: `city-${slug(item.name)}-${slug(item.state)}`,
-    name: item.name,
-    region: item.state || 'India',
-    aqi: null,
-    pm25: null,
-    primaryPollutant: 'PM2.5',
-    lastUpdated: 'Unknown',
-    dataSource: 'OpenAQ v3',
-    locationSource: 'manual',
+    id: `live-${item.id}`,
+    name: item.city,
+    region: item.region || item.state || 'India',
+    aqi: item.aqi,
+    pm25: item.pm25,
+    primaryPollutant: formatPollutant(item.dominantPollutant) || 'PM2.5',
+    lastUpdated: item.lastUpdated || 'Unknown',
+    dataSource: 'CPCB via data.gov.in',
     dataType: 'live_measurement',
     isLiveData: true,
-    // Coordinates drive the nearest OpenAQ station lookup on the dashboard
-    liveQuery: { city: item.name, state: item.state, lat: item.lat, lon: item.lon },
-    stationNames: []
+    // Exact CPCB names, so the dashboard fetch hits the right city
+    liveQuery: { city: item.city, state: item.state || undefined }
   };
-}
-
-// Built once at module load (the list never changes at runtime)
-const STATIC_ROWS = SORTED_CITIES.map((item) => ({
-  key: `${item.name}-${item.state}`,
-  item,
-  city: staticItemToCity(item),
-  demo: false
-}));
-
-// ---- Lazy per-city AQI badges ----
-// Only the first few visible cities are fetched (3 at a time) so we don't flood
-// the backend / OpenAQ rate limits. Results are cached across modal opens.
-const AQI_PREFETCH_LIMIT = 6;
-const AQI_CONCURRENCY = 2;
-const AQI_TTL_MS = 10 * 60 * 1000;      // successful readings
-const AQI_FAIL_TTL_MS = 60 * 1000;      // "no station / failed" results
-const aqiCache = new Map();             // city.id -> { aqi, pm25, ts }
-
-function getCachedAqi(id) {
-  const entry = aqiCache.get(id);
-  if (!entry) return null;
-  const ttl = entry.aqi != null ? AQI_TTL_MS : AQI_FAIL_TTL_MS;
-  return Date.now() - entry.ts < ttl ? entry : null;
 }
 
 export default function LocationModal({
@@ -99,97 +58,58 @@ export default function LocationModal({
     message: ''
   });
   const [searchQuery, setSearchQuery] = useState('');
-  const [debouncedQuery, setDebouncedQuery] = useState('');
-  const [geocodedPlaces, setGeocodedPlaces] = useState([]);
   const [showAll, setShowAll] = useState(false);
-  const [, setAqiTick] = useState(0); // bumps to re-render when a city's AQI arrives
+  const [cityList, setCityList] = useState({ status: 'idle', cities: [], error: null, fetchedAt: null, snapshot: null, source: null });
 
-  useEffect(() => {
-    const timer = setTimeout(() => setDebouncedQuery(searchQuery.trim().toLowerCase()), 180);
-    return () => clearTimeout(timer);
-  }, [searchQuery]);
+  const loadCities = async () => {
+    setCityList((prev) => ({ ...prev, status: 'loading', error: null }));
+    const result = await fetchCityList();
+    if (result.error || !result.cities || result.cities.length === 0) {
+      setCityList({ status: 'error', cities: [], error: result.error || 'No cities returned', fetchedAt: null, snapshot: null, source: null });
+    } else {
+      setCityList({
+        status: 'ready',
+        cities: result.cities,
+        error: null,
+        fetchedAt: result.fetchedAt || null,
+        snapshot: result.snapshot || null,
+        source: result.source || null
+      });
+    }
+  };
 
-  // Extra places (towns not in the static list) found through place search
+  // Load the live city list whenever the picker opens (cached by the client for 10 min)
   useEffect(() => {
-    let active = true;
-    if (debouncedQuery.length < 2) { setGeocodedPlaces([]); return () => { active = false; }; }
-    Promise.resolve(searchIndianPlaces(debouncedQuery))
-      .then(places => { if (active) setGeocodedPlaces(Array.isArray(places) ? places : []); })
-      .catch(() => { if (active) setGeocodedPlaces([]); });
-    return () => { active = false; };
-  }, [debouncedQuery]);
+    if (isOpen && cityList.status !== 'ready' && cityList.status !== 'loading') {
+      loadCities();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen]);
+
+  const rows = useMemo(() => {
+    if (cityList.status === 'ready') {
+      return cityList.cities.map((item) => ({ key: item.id, item, city: liveItemToCity(item), demo: false }));
+    }
+    if (cityList.status === 'error') {
+      return SAMPLE_CITIES.filter((c) => DEMO_FALLBACK_IDS.includes(c.id)).map((c) => ({
+        key: c.id,
+        item: null,
+        city: c,
+        demo: true
+      }));
+    }
+    return [];
+  }, [cityList]);
 
   const filteredRows = useMemo(() => {
-    const q = debouncedQuery;
-    if (!q) return STATIC_ROWS;
-    const matchedRows = STATIC_ROWS.filter(({ city }) =>
-      matchesSearch(city.name, q) || matchesSearch(city.region, q)
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return rows;
+    return rows.filter(({ city }) =>
+      city.name.toLowerCase().includes(q) || String(city.region || '').toLowerCase().includes(q)
     );
-    const known = new Set(matchedRows.map(row => `${row.city.name.toLowerCase()}|${row.city.region.toLowerCase()}`));
-    const placeRows = geocodedPlaces
-      .map(item => ({
-        key: item.id,
-        item,
-        demo: false,
-        city: {
-          id: `live-${item.id}`,
-          name: item.city,
-          region: item.state || 'India',
-          aqi: null,
-          pm25: null,
-          primaryPollutant: 'PM2.5',
-          lastUpdated: 'Unknown',
-          dataSource: 'OpenAQ v3',
-          dataType: 'live_measurement',
-          isLiveData: true,
-          locationSource: 'manual',
-          liveQuery: { city: item.city, state: item.state, lat: item.coordinates?.lat, lon: item.coordinates?.lon },
-          stationNames: []
-        }
-      }))
-      .filter(row => !known.has(`${row.city.name.toLowerCase()}|${row.city.region.toLowerCase()}`));
-    return [...matchedRows, ...placeRows];
-  }, [debouncedQuery, geocodedPlaces]);
+  }, [rows, searchQuery]);
 
   const visibleRows = showAll ? filteredRows : filteredRows.slice(0, MAX_VISIBLE);
-
-  // Stable key so the effect only re-runs when the first visible cities change
-  const prefetchKey = visibleRows.slice(0, AQI_PREFETCH_LIMIT).map(r => r.city.id).join('|');
-
-  useEffect(() => {
-    if (!isOpen) return undefined;
-    let active = true;
-
-    const targets = visibleRows
-      .slice(0, AQI_PREFETCH_LIMIT)
-      .map(r => r.city)
-      .filter(c => Number.isFinite(c.liveQuery?.lat) && Number.isFinite(c.liveQuery?.lon) && !getCachedAqi(c.id));
-
-    let next = 0;
-    const worker = async () => {
-      while (active && next < targets.length) {
-        const c = targets[next];
-        next += 1;
-        try {
-          const result = await fetchAqiNearby(c.liveQuery.lat, c.liveQuery.lon);
-          const best = pickBestStation(result);
-          if (best) {
-            const mapped = stationToCityFormat(best, c);
-            aqiCache.set(c.id, { aqi: mapped?.aqi ?? best.aqi ?? null, pm25: mapped?.pm25 ?? best.pm25 ?? null, ts: Date.now() });
-          } else {
-            aqiCache.set(c.id, { aqi: null, pm25: null, ts: Date.now() });
-          }
-        } catch (e) {
-          aqiCache.set(c.id, { aqi: null, pm25: null, ts: Date.now() });
-        }
-        if (active) setAqiTick(t => t + 1);
-      }
-    };
-    for (let i = 0; i < AQI_CONCURRENCY; i += 1) worker();
-
-    return () => { active = false; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isOpen, prefetchKey]);
 
   if (!isOpen) return null;
 
@@ -228,17 +148,13 @@ export default function LocationModal({
           if (best) {
             chosenCity = stationToCityFormat(best, {
               id: `geo-${best.stationId || 'station'}`,
-              name: best.city || 'Your location',
-              region: 'India',
-              locationSource: 'auto',
-              liveQuery: { lat: latitude, lon: longitude, origin: 'geolocation' }
+              name: best.city || best.station,
+              region: `Station ${best.distanceKm != null ? `${best.distanceKm} km away` : 'Nearby'}`
             });
             const distance = best.distanceKm != null ? `${best.distanceKm} km away` : 'nearby';
-            const widened = best.distanceKm > 50
-              ? ' This is over 50 km away and is the nearest usable station found within the 100 km search limit.'
-              : best.distanceKm > 25
-                ? ' No usable station was found within 25 km; this is the nearest found within 100 km.'
-                : '';
+            const widened = liveResult.widenedSearch
+              ? ' No station was found within 50 km, so this is the nearest one available.'
+              : '';
             setGeoState({
               status: 'granted',
               message: `Connected to live station: ${best.station} (${distance}).${widened}${accuracyNote}`
@@ -252,10 +168,11 @@ export default function LocationModal({
           // No fake mapping to a "nearest sample city": say plainly that live data was not found
           setGeoState({
             status: 'denied',
-            message: 'No recent OpenAQ station was found at your detected coordinates. Your saved city selection is unchanged; search for your city below or retry.'
+            message: 'I could not find a live monitoring station for your location right now. Please search for your city below.'
           });
           return;
         }
+
         setTimeout(() => {
           onSelectCity(chosenCity);
           onClose();
@@ -270,24 +187,10 @@ export default function LocationModal({
         } else if (error.code === error.TIMEOUT) {
           msg = 'Location request timed out. Please search for your city below.';
         }
-        setGeoState({ status: 'denied', message: msg });
-        if (error.code === error.PERMISSION_DENIED) {
-          fetchApproximateIpLocation().then(async approximate => {
-            if (!approximate || !Number.isFinite(approximate.lat) || !Number.isFinite(approximate.lon)) return;
-            const result = await fetchAqiNearby(approximate.lat, approximate.lon);
-            const best = pickBestStation(result);
-            if (!best) return;
-            const city = stationToCityFormat(best, {
-              id: `geo-ip-${best.stationId || 'station'}`,
-              name: approximate.city || best.city || 'Approximate area',
-              region: approximate.region || 'India',
-              locationSource: 'ip-estimated',
-              liveQuery: { lat: approximate.lat, lon: approximate.lon, city: approximate.city, origin: 'ip' }
-            });
-            setGeoState({ status: 'granted', message: `Browser location was denied. Showing an approximate network location near ${approximate.city || 'your area'}; this is not an exact location. Nearest recent OpenAQ CPCB-source station: ${best.station} (${best.distanceKm} km away).` });
-            setTimeout(() => { onSelectCity(city); onClose(); }, 1200);
-          }).catch(() => {});
-        }
+        setGeoState({
+          status: 'denied',
+          message: msg
+        });
       },
       { timeout: 20000, enableHighAccuracy: true, maximumAge: 0 }
     );
@@ -426,7 +329,7 @@ export default function LocationModal({
             <Search size={16} color="#7E989C" style={{ position: 'absolute', left: '12px', top: '12px' }} />
             <input
               type="text"
-              placeholder={`Search ${STATIC_ROWS.length} cities or states...`}
+              placeholder={cityList.status === 'ready' ? `Search ${cityList.cities.length} cities or states...` : 'Search cities...'}
               aria-label="Search cities"
               value={searchQuery}
               onChange={(e) => { setSearchQuery(e.target.value); setShowAll(false); }}
@@ -443,26 +346,93 @@ export default function LocationModal({
             />
           </div>
 
+          {/* Loading / error states */}
+          {cityList.status === 'loading' && (
+            <div style={{ padding: '16px', textAlign: 'center', fontSize: '0.85rem', color: '#6B878D' }}>
+              Loading live cities from CPCB… this can take up to a minute if the server is waking up.
+            </div>
+          )}
+
+          {cityList.status === 'error' && (
+            <div style={{
+              marginBottom: '12px',
+              padding: '10px 14px',
+              borderRadius: '10px',
+              fontSize: '0.8rem',
+              backgroundColor: '#FFFBEB',
+              color: '#92400E',
+              border: '1px solid #FDE68A',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: '10px'
+            }}>
+              <span>Could not load the live city list ({cityList.error}). Showing a few demo cities instead.</span>
+              <button
+                onClick={loadCities}
+                className="btn"
+                style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.75rem', cursor: 'pointer', flexShrink: 0 }}
+              >
+                <RefreshCw size={12} /> Retry
+              </button>
+            </div>
+          )}
+
+          {cityList.status === 'ready' && cityList.snapshot && cityList.snapshot.warming && (
+            <div style={{
+              marginBottom: '12px',
+              padding: '10px 14px',
+              borderRadius: '10px',
+              fontSize: '0.8rem',
+              backgroundColor: '#F3F8F6',
+              color: '#102E35',
+              border: '1px solid #E2ECE9',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: '10px'
+            }}>
+              <span>
+                Live stations are still loading ({cityList.snapshot.stationsWithData} of {cityList.snapshot.stationsTracked || '?'}). More cities will appear in a few minutes.
+              </span>
+              <button
+                onClick={loadCities}
+                className="btn"
+                style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.75rem', cursor: 'pointer', flexShrink: 0 }}
+              >
+                <RefreshCw size={12} /> Refresh
+              </button>
+            </div>
+          )}
+
           {/* City Selection List */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-            {visibleRows.map(({ key, city: baseCity }, index) => {
-              const cached = getCachedAqi(baseCity.id);
-              const city = cached ? { ...baseCity, aqi: cached.aqi, pm25: cached.pm25 } : baseCity;
+            {visibleRows.map(({ key, item, city, demo }) => {
               const hasAqi = city.aqi != null;
               const aqiInfo = classifyAqi(hasAqi ? city.aqi : null);
               const isSelected = currentCity?.id === city.id;
-              const isLoadingAqi = !cached && index < AQI_PREFETCH_LIMIT;
-              const displayAqi = hasAqi ? city.aqi : (isLoadingAqi ? '…' : '—');
-              const pill = 'Live OpenAQ';
-              const subtitle = hasAqi
-                ? `${city.region} • ${aqiInfo.category}${city.pm25 != null ? ` • PM2.5 ${city.pm25} µg/m³` : ''}`
-                : `${city.region} • ${isLoadingAqi ? 'Loading live reading…' : (cached ? 'No recent station nearby' : 'Select to load live OpenAQ data')}`;
+              const displayAqi = hasAqi ? city.aqi : 'N/A';
+
+              let pill;
+              if (demo) {
+                pill = 'Demo data';
+              } else if (!hasAqi) {
+                pill = 'Limited data';
+              } else if (city.pm25 != null) {
+                pill = `PM2.5: ${city.pm25} µg/m³`;
+              } else {
+                pill = `${item.stationCount} station${item.stationCount === 1 ? '' : 's'}`;
+              }
+
+              const subtitle = demo
+                ? `${city.region} • ${aqiInfo.category}`
+                : `${city.region} • ${hasAqi ? aqiInfo.category : 'No AQI (not enough pollutant data)'}`;
 
               return (
                 <div
                   key={key}
                   onClick={() => {
-                    onSelectCity(baseCity);
+                    onSelectCity(city);
                     onClose();
                   }}
                   style={{
@@ -508,10 +478,10 @@ export default function LocationModal({
                       fontSize: '0.7rem',
                       padding: '3px 8px',
                       borderRadius: '9999px',
-                      backgroundColor: '#ECFDF5',
-                      color: '#065F46',
+                      backgroundColor: aqiInfo.bgColor,
+                      color: aqiInfo.textColor,
                       fontWeight: 600,
-                      border: '1px solid #A7F3D0'
+                      border: `1px solid ${aqiInfo.borderColor}`
                     }}>
                       {pill}
                     </span>
@@ -523,9 +493,9 @@ export default function LocationModal({
               );
             })}
 
-            {filteredRows.length === 0 && (
+            {cityList.status !== 'loading' && filteredRows.length === 0 && (
               <div style={{ padding: '16px', textAlign: 'center', fontSize: '0.85rem', color: '#6B878D' }}>
-                No city matches "{searchQuery}". Try a nearby larger city, or use your current location.
+                No monitored city matches "{searchQuery}". Only cities with a CPCB monitoring station are listed. Try a nearby larger city, or use your current location.
               </div>
             )}
 
@@ -554,7 +524,17 @@ export default function LocationModal({
           }}>
             <Info size={16} color="#20464A" style={{ flexShrink: 0, marginTop: '2px' }} />
             <div>
-              <strong>OpenAQ live data:</strong> Select a city to load the nearest usable OpenAQ station readings. Coverage varies by location; if no recent station is nearby, the dashboard will say so and no sample readings are substituted.
+              {cityList.status === 'ready' ? (
+                <>
+                  <strong>Live data:</strong> {cityList.source === 'openaq'
+                    ? 'monitoring stations in India via OpenAQ (government and other providers), refreshed in the background about hourly.'
+                    : 'CPCB monitoring stations via data.gov.in.'} A city's AQI here is the average of its stations' real-time readings, so it can differ from the official 24-hour CPCB figure. Only cities with a monitoring station are listed.
+                </>
+              ) : (
+                <>
+                  <strong>Demo data:</strong> the live city list is not available, so the values shown are sample data and not real measurements.
+                </>
+              )}
             </div>
           </div>
         </div>

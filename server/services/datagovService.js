@@ -190,6 +190,11 @@ const MAX_PAGES = 30; // safety cap: 15,000 rows
 
 let allCache = null;     // { data, fetchedAt }
 let allInflight = null;  // Promise shared by concurrent callers
+let allLastFailure = null; // { at, error, count }: circuit breaker so an unreachable host is not retried on every request
+let allFailureCount = 0;
+// Wait 2 min after the first failure, then 4, 8, 16, up to 30 min, so a server that can never
+// reach data.gov.in (e.g. hosted outside India) is only tried a handful of times per hour.
+const failureCooldownMs = () => Math.min(30 * 60 * 1000, 2 * 60 * 1000 * 2 ** Math.max(0, allFailureCount - 1));
 
 const toNum = (v) => {
   if (v === null || v === undefined || v === '') return null;
@@ -247,6 +252,10 @@ async function fetchPage(apiKey, limit, offset) {
  *            fromCache: boolean, fromStaleCache?: boolean } | { error: string, provider: string }}
  */
 export async function fetchAllCpcbRecords() {
+  // Set DATA_GOV_IN_DISABLED=true on servers that cannot reach data.gov.in: skips it with no network attempt
+  if (String(process.env.DATA_GOV_IN_DISABLED).toLowerCase() === 'true') {
+    return { error: 'data.gov.in is disabled by configuration (DATA_GOV_IN_DISABLED)', provider: 'data.gov.in' };
+  }
   const apiKey = process.env.DATA_GOV_IN_API_KEY;
   if (!apiKey) {
     return { error: 'DATA_GOV_IN_API_KEY is not configured', provider: 'data.gov.in' };
@@ -256,6 +265,15 @@ export async function fetchAllCpcbRecords() {
     return { ...allCache.data, fromCache: true };
   }
   if (allInflight) return allInflight;
+
+  // Circuit breaker: if data.gov.in just failed (e.g. unreachable from this server), answer
+  // instantly for a couple of minutes instead of making every request wait for a timeout.
+  if (allLastFailure && Date.now() - allLastFailure.at < failureCooldownMs()) {
+    if (allCache && Date.now() - allCache.fetchedAt < ALL_STALE_OK_MS) {
+      return { ...allCache.data, fromCache: true, fromStaleCache: true };
+    }
+    return { error: allLastFailure.error, provider: 'data.gov.in' };
+  }
 
   allInflight = (async () => {
     try {
@@ -299,13 +317,18 @@ export async function fetchAllCpcbRecords() {
         fromCache: false
       };
       allCache = { data, fetchedAt: Date.now() };
+      allLastFailure = null;
+      allFailureCount = 0;
       return data;
     } catch (err) {
       console.error(`[data.gov.in] refresh failed: ${err.message}`);
       if (allCache && Date.now() - allCache.fetchedAt < ALL_STALE_OK_MS) {
         return { ...allCache.data, fromCache: true, fromStaleCache: true };
       }
-      return { error: `data.gov.in fetch failed: ${err.message}`, provider: 'data.gov.in' };
+      const message = `data.gov.in fetch failed: ${err.message}`;
+      allFailureCount += 1;
+      allLastFailure = { at: Date.now(), error: message };
+      return { error: message, provider: 'data.gov.in' };
     } finally {
       allInflight = null;
     }
