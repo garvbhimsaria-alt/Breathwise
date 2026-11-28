@@ -408,8 +408,38 @@ router.get('/providers', (_req, res) => {
       role: 'secondary',
       keyConfigured: !!process.env.OPENAQ_API_KEY,
       endpoint: 'https://api.openaq.org/v3'
+    },
+    weather: {
+      name: 'Open-Meteo',
+      role: 'weather only',
+      keyRequired: false
     }
   });
+});
+
+// ── GET /api/aqi/weather ─────────────────────────────────────
+const weatherCache = new Map();
+router.get('/weather', async (req,res) => {
+  const lat=Number(req.query.lat), lon=Number(req.query.lon);
+  if(!Number.isFinite(lat)||!Number.isFinite(lon)||Math.abs(lat)>90||Math.abs(lon)>180) return res.status(400).json({error:'Valid lat and lon are required.'});
+  const key=`${lat.toFixed(2)},${lon.toFixed(2)}`;
+  const cached=weatherCache.get(key);
+  if(cached&&Date.now()-cached.at<10*60*1000) return res.json({...cached.data,fromCache:true});
+  const url=new URL('https://api.open-meteo.com/v1/forecast');
+  url.search=new URLSearchParams({latitude:String(lat),longitude:String(lon),current:'temperature_2m,relative_humidity_2m,wind_speed_10m,wind_direction_10m',hourly:'boundary_layer_height,visibility',forecast_days:'1',timezone:'Asia/Kolkata'}).toString();
+  try {
+    const controller=new AbortController(); const timer=setTimeout(()=>controller.abort(),8000);
+    let response;
+    try { response=await fetch(url,{signal:controller.signal,headers:{Accept:'application/json'}}); }
+    finally { clearTimeout(timer); }
+    if(!response.ok) return res.status(502).json({error:`Open-Meteo returned HTTP ${response.status}`});
+    const json=await response.json();
+    const now=json.current?.time;
+    const hourIndex=Array.isArray(json.hourly?.time)?json.hourly.time.indexOf(now):-1;
+    const data={provider:'Open-Meteo',temperature:json.current?.temperature_2m??null,humidity:json.current?.relative_humidity_2m??null,windSpeed:json.current?.wind_speed_10m??null,windDirection:json.current?.wind_direction_10m??null,boundaryLayerHeight:hourIndex>=0?(json.hourly.boundary_layer_height?.[hourIndex]??null):null,visibility:hourIndex>=0?(json.hourly.visibility?.[hourIndex]??null):null,observedAt:now||null};
+    weatherCache.set(key,{at:Date.now(),data});
+    res.json(data);
+  } catch(error) { res.status(502).json({error:error.name==='AbortError'?'Open-Meteo weather request timed out':'Weather service unavailable'}); }
 });
 
 // ── Normalisation helpers ────────────────────────────────────
